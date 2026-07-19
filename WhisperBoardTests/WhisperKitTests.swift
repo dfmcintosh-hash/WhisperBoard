@@ -197,7 +197,7 @@ final class AudioProcessorModuleTests: XCTestCase {
 final class SharedDefaultsTests: XCTestCase {
 
     func testAppGroupIdentifier() {
-        XCTAssertEqual(SharedDefaults.appGroupIdentifier, "group.com.fmachta.whisperboard")
+        XCTAssertEqual(SharedDefaults.appGroupIdentifier, "group.com.captainsos.whisperboard")
     }
 
     func testTranscriptionRequestCodable() throws {
