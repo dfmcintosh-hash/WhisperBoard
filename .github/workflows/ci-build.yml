@@ -24,3 +24,11 @@ jobs:
             -scheme WhisperBoard \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -120
+      - name: Run tests (iOS Simulator, signing off)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project WhisperBoard.xcodeproj \
+            -scheme WhisperBoard \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -80
