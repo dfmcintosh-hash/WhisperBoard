@@ -145,10 +145,10 @@ final class WhisperTranscriber: ObservableObject {
                 temperatureFallbackCount: 3,
                 sampleLength: 224,
                 usePrefillPrompt: true,
-                promptTokens: _promptTokens,
                 usePrefillCache: true,
                 skipSpecialTokens: true,
-                withoutTimestamps: true
+                withoutTimestamps: true,
+                promptTokens: _promptTokens
             )
 
             let segments = try await kit.transcribe(audioArray: processed, decodeOptions: options)
