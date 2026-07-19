@@ -7,7 +7,7 @@
 ## Proven tonight (2026-07-19, free CI, no Mac, no dev account)
 - **Compiles CLEAN** against **iOS 26.5 SDK**, **WhisperKit auto-resolved to 0.18.0**
   (`from: 0.1.0`) — `** BUILD SUCCEEDED **`, 1m48s. The 5-month-staleness risk is dead.
-- **Tests:** _(fill from CI run 29673324422 — simulator, no signing)_
+- **Tests: 40/40 PASS** on CI (simulator, no signing) — ModelManager, SharedDefaults, TranscriptionService, WhisperKit, WhisperModelType. Codebase is healthy, not half-broken.
 - **Signing pipeline already exists** (author's): `fastlane` lanes `test/build/beta/release`
   + `match` + App Store Connect API key; `.github/workflows/ios.yml` runs `fastlane beta`
   → TestFlight. We are *plugging in identity*, not building the pipeline.
