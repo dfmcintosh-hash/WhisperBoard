@@ -136,13 +136,4 @@ platform :ios do
     )
   end
 
-  private
-
-  def generate_changelog
-    # Get commit messages since last tag
-    changelog_from_git_commits(
-      between: [last_git_tag, "HEAD"],
-      pretty: "- %s"
-    )
-  end
 end
