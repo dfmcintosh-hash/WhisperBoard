@@ -15,7 +15,7 @@ type("appstore")
 # team_id("")
 
 # App identifiers
-app_identifier(["com.fmachta.whisperboard", "com.fmachta.whisperboard.keyboard"])
+app_identifier(["com.captainsos.whisperboard", "com.captainsos.whisperboard.keyboard"])
 
 # Username for Apple Developer Portal
 # username("")

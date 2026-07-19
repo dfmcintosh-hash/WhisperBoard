@@ -8,7 +8,7 @@
 # team_name("")
 
 # The bundle identifier of your app
-app_identifier("com.fmachta.whisperboard")
+app_identifier("com.captainsos.whisperboard")
 
 # Your Apple ID email address
 # apple_id("") # Fill this in

@@ -122,7 +122,7 @@ class KeyboardViewController: UIInputViewController {
             SharedDefaults.sharedDefaults?.set(true, forKey: "shouldStartRecording")
             SharedDefaults.sharedDefaults?.synchronize()
             print("[Keyboard] Posting startRecording notification")
-            DarwinNotificationCenter.shared.post("com.fmachta.whisperboard.startRecording")
+            DarwinNotificationCenter.shared.post("com.captainsos.whisperboard.startRecording")
             
             isWaitingForTranscription = true
             statusLabel.text = "Recording in app...\n(Tap to cancel)"

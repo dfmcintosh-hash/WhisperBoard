@@ -26,7 +26,7 @@ targets:
         excludes:
           - "Info.plist"
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.fmachta.whisperboard
+      PRODUCT_BUNDLE_IDENTIFIER: com.captainsos.whisperboard
       CODE_SIGN_ENTITLEMENTS: WhisperBoard/Resources/WhisperBoard.entitlements
       INFOPLIST_FILE: WhisperBoard/Resources/Info.plist
     dependencies:
@@ -55,7 +55,7 @@ targets:
         excludes:
           - "KeyboardInfo.plist"
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.fmachta.whisperboard.keyboard
+      PRODUCT_BUNDLE_IDENTIFIER: com.captainsos.whisperboard.keyboard
       CODE_SIGN_ENTITLEMENTS: WhisperBoard/KeyboardExtension/Resources/KeyboardExtension.entitlements
       INFOPLIST_FILE: WhisperBoard/KeyboardExtension/Resources/KeyboardInfo.plist
     # No package dependencies – pure UIKit + AVFoundation + system frameworks only

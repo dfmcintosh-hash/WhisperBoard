@@ -60,7 +60,7 @@ final class TranscriptionService: ObservableObject {
         }
         
         // Observe request to start recording (new - keyboard asks main app to record)
-        DarwinNotificationCenter.shared.observe("com.fmachta.whisperboard.startRecording") { [weak self] in
+        DarwinNotificationCenter.shared.observe("com.captainsos.whisperboard.startRecording") { [weak self] in
             print("[TranscriptionService] Received startRecording notification from keyboard")
             self?.handleStartRecordingRequest()
         }

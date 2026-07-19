@@ -8,11 +8,11 @@ enum SharedDefaults {
 
     // MARK: - Identifiers
 
-    static let appGroupIdentifier = "group.com.fmachta.whisperboard"
+    static let appGroupIdentifier = "group.com.captainsos.whisperboard"
 
     // Darwin notification names
-    static let newAudioNotificationName    = "com.fmachta.whisperboard.newAudio"
-    static let transcriptionDoneNotificationName = "com.fmachta.whisperboard.transcriptionDone"
+    static let newAudioNotificationName    = "com.captainsos.whisperboard.newAudio"
+    static let transcriptionDoneNotificationName = "com.captainsos.whisperboard.transcriptionDone"
 
     // UserDefaults keys (shared)
     static let selectedModelKey   = "selectedWhisperModel"

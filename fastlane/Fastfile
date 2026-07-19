@@ -45,7 +45,7 @@ platform :ios do
 
     # Upload to TestFlight
     pilot(
-      app_identifier: "com.fmachta.whisperboard",
+      app_identifier: "com.captainsos.whisperboard",
       ipa: "build/WhisperBoard.ipa",
       skip_waiting_for_build_processing: false,
       distribute_external: false,
@@ -93,7 +93,7 @@ platform :ios do
   lane :sync_certs do
     match(
       type: "appstore",
-      app_identifier: "com.fmachta.whisperboard",
+      app_identifier: "com.captainsos.whisperboard",
       readonly: true
     )
   end
@@ -102,11 +102,11 @@ platform :ios do
   lane :setup_certs do
     match(
       type: "development",
-      app_identifier: "com.fmachta.whisperboard"
+      app_identifier: "com.captainsos.whisperboard"
     )
     match(
       type: "appstore",
-      app_identifier: "com.fmachta.whisperboard"
+      app_identifier: "com.captainsos.whisperboard"
     )
   end
 
