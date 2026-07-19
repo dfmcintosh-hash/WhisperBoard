@@ -5,7 +5,8 @@
 > TestFlight, never touch a Mac interactively. Fork: `github.com/dfmcintosh-hash/WhisperBoard`.
 
 ## Proven tonight (2026-07-19, free CI, no Mac, no dev account)
-- **Compiles CLEAN** against **iOS 26.5 SDK**, **WhisperKit auto-resolved to 0.18.0**
+- **DONE:** compiles clean + **40/40 tests** + **vocab seeded (WD_PROMPT)** + **renamed to com.captainsos**. Below:
+- Compiles CLEAN against **iOS 26.5 SDK**, **WhisperKit auto-resolved to 0.18.0**
   (`from: 0.1.0`) — `** BUILD SUCCEEDED **`, 1m48s. The 5-month-staleness risk is dead.
 - **Tests: 40/40 PASS** on CI (simulator, no signing) — ModelManager, SharedDefaults, TranscriptionService, WhisperKit, WhisperModelType. Codebase is healthy, not half-broken.
 - **Signing pipeline already exists** (author's): `fastlane` lanes `test/build/beta/release`
@@ -26,8 +27,8 @@ Pick a namespace, e.g. `com.dfmcintosh` (or a domain you own). ORCH runs this se
 - `fastlane/Appfile` (`app_identifier`, add `team_id`, `apple_id`) + `fastlane/Matchfile`
 
 **3. Register in the Developer portal** (web, Linux-fine):
-- App IDs: `com.<you>.whisperboard` + `.keyboard`, both with **App Groups** capability
-- App Group: `group.com.<you>.whisperboard`
+- App IDs: `com.captainsos.whisperboard` + `com.captainsos.whisperboard.keyboard`, both with **App Groups** capability
+- App Group: `group.com.captainsos.whisperboard`
 - Create the app record in **App Store Connect** (for TestFlight)
 
 **4. App Store Connect API key** (CI upload auth): App Store Connect → Users and Access →
