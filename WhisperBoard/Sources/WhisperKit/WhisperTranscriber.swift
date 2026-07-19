@@ -132,12 +132,20 @@ final class WhisperTranscriber: ObservableObject {
         let processed = audioProcessor.process(audioSamples)
 
         do {
+            // Seed the decoder with the user's domain vocabulary (initial-prompt bias),
+            // same mechanism as the TR whisper WD_PROMPT.
+            let _vocab = SharedDefaults.customVocabulary
+            let _promptTokens: [Int]? = _vocab.isEmpty ? nil
+                : kit.tokenizer?.encode(text: " " + _vocab)
+                    .filter { $0 < (kit.tokenizer?.specialTokens.specialTokenBegin ?? 50257) }
+
             let options = DecodingOptions(
                 language: nil,  // auto-detect
                 temperature: 0.0,
                 temperatureFallbackCount: 3,
                 sampleLength: 224,
                 usePrefillPrompt: true,
+                promptTokens: _promptTokens,
                 usePrefillCache: true,
                 skipSpecialTokens: true,
                 withoutTimestamps: true

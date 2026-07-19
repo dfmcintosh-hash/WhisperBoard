@@ -18,6 +18,19 @@ enum SharedDefaults {
     static let selectedModelKey   = "selectedWhisperModel"
     static let selectedLanguageKey = "selectedLanguage"
     static let serviceRunningKey  = "isTranscriptionServiceRunning"
+    static let customVocabularyKey = "customVocabulary"
+
+    /// Domain vocabulary that biases the decoder so proper nouns aren't mangled
+    /// (Qwen->QIN, Claude->Cloud, FARO->Ferro, Gemma->Jemma). Mirrors Devin's TR whisper
+    /// WD_PROMPT. Soft bias; ~224-token prompt cap -> keep curated, not exhaustive.
+    static let defaultCustomVocabulary = "Technical dictation. Recurring terms: Claude Code, Qwen 3.6, Gemma 4, Hermes, Nomic, FARO Focus, llama.cpp, vLLM, Blackwell, Threadripper, Nemotron, GLM, ReVision, FlightScan, AnchorScan, PointCloudPipeline, ZED-F9P, ArduSimple, NVFP4, Codex, Paperclip, Bertram, Cape Fear, CTranslate2, AgentMemory, Pinned Facts, RTK, GNSS."
+
+    /// User-editable custom vocabulary, seeded with the default. Stored in the App Group
+    /// so the app and the keyboard-triggered transcription share one list.
+    static var customVocabulary: String {
+        get { sharedDefaults?.string(forKey: customVocabularyKey) ?? defaultCustomVocabulary }
+        set { sharedDefaults?.set(newValue, forKey: customVocabularyKey) }
+    }
 
     // File names
     private static let requestFile = "transcription_request.json"
