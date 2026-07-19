@@ -72,8 +72,10 @@ platform :ios do
       build_path: "build",
       include_bitcode: false,
       include_symbols: true,
+      # Archive step: gym does NOT auto-add the API-key auth, so we pass it here.
+      # Export step: gym auto-injects the same auth from app_store_connect_api_key,
+      # so we must NOT pass export_xcargs (duplicate -authenticationKeyPath = error).
       xcargs: auth_args,
-      export_xcargs: auth_args,
       export_options: {
         signingStyle: "automatic"
       }
