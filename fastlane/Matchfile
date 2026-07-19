@@ -12,7 +12,7 @@ storage_mode("git")
 type("appstore")
 
 # Your Apple Developer Portal Team ID
-# team_id("")
+team_id("9AW36UQT73")
 
 # App identifiers
 app_identifier(["com.captainsos.whisperboard", "com.captainsos.whisperboard.keyboard"])

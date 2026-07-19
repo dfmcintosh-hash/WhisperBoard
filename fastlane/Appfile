@@ -2,7 +2,7 @@
 # https://docs.fastlane.tools/advanced/Appfile/
 
 # Your Apple Developer Portal Team ID
-# team_id("") # Fill this in after enrolling in Apple Developer Program
+team_id("9AW36UQT73")
 
 # Your Apple Developer Portal Team Name (optional)
 # team_name("")

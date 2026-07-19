@@ -2,7 +2,7 @@ name: WhisperBoard
 
 settings:
   CODE_SIGN_STYLE: Automatic
-  DEVELOPMENT_TEAM: ""
+  DEVELOPMENT_TEAM: "9AW36UQT73"
   SWIFT_VERSION: "5.9"
 
 packages:
