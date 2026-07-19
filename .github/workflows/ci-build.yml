@@ -27,8 +27,10 @@ jobs:
       - name: Run tests (iOS Simulator, signing off)
         run: |
           set -o pipefail
+          UDID=$(xcrun simctl list devices available | grep -E 'iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          echo "Test simulator UDID: $UDID"
           xcodebuild test \
             -project WhisperBoard.xcodeproj \
             -scheme WhisperBoard \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination "id=$UDID" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -80
