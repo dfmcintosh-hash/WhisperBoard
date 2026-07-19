@@ -1,0 +1,26 @@
+name: CI Build (compile check, no signing)
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version && xcodebuild -showsdks | grep -i ios || true
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project WhisperBoard.xcodeproj -scheme WhisperBoard
+      - name: Build (iOS Simulator, signing off)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project WhisperBoard.xcodeproj \
+            -scheme WhisperBoard \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -120
