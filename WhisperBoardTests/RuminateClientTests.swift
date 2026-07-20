@@ -63,10 +63,13 @@ final class RuminateClientTests: XCTestCase {
             return (200, [:], Data(fixtures[path]!.utf8))
         }
         _ = try await client.postTurn(TurnRequest(text: "x", clientTurnId: "c"))
-        XCTAssertEqual(try await client.turnStatus(id: "s").state, "succeeded")
-        XCTAssertEqual(try await client.history(cursor: "old", limit: 10).nextCursor, "n")
+        let status = try await client.turnStatus(id: "s")
+        let history = try await client.history(cursor: "old", limit: 10)
         try await client.refresh()
-        XCTAssertTrue(try await client.health().ok)
+        let health = try await client.health()
+        XCTAssertEqual(status.state, "succeeded")
+        XCTAssertEqual(history.nextCursor, "n")
+        XCTAssertTrue(health.ok)
     }
 
     @MainActor
