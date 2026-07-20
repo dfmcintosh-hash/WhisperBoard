@@ -21,6 +21,7 @@ targets:
       - path: WhisperBoard/Sources/App
       - path: WhisperBoard/Sources/Views
       - path: WhisperBoard/Sources/Shared
+      - path: WhisperBoard/Sources/Ruminate
       - path: WhisperBoard/Sources/WhisperKit
       - path: WhisperBoard/Resources
         excludes:
