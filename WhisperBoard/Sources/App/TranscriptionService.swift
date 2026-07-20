@@ -208,14 +208,64 @@ final class TranscriptionService: ObservableObject {
     }
     
     private func processRecordedAudio(_ url: URL) async {
-        guard let request = createTranscriptionRequest(for: url) else {
-            writeRecordingFailure(error: "Failed to create request")
+        await MainActor.run { isTranscribing = true }
+
+        // Decode the recording DIRECTLY from its file. The recording is written by
+        // AVAudioFile (a real audio file WITH a header), so it must be read with
+        // AVAudioFile — the old path used SharedDefaults.loadAudio(), which (a) looked in
+        // the wrong directory (audio/ subdir vs the container root where we write) and
+        // (b) cast raw bytes incl. the header straight to [Float]. Result: transcription
+        // got nothing and the keyboard hung on "Transcribing…".
+        guard let samples = loadSamplesFromFile(url), !samples.isEmpty else {
+            writeRecordingFailure(error: "Audio file was empty or unreadable")
             return
         }
-        
-        // Save request and transcribe
-        SharedDefaults.writeRequest(request)
-        await transcribeRequest(request)
+
+        // Ensure a model is loaded before transcribing.
+        if !isModelLoaded {
+            let modelName = SharedDefaults.sharedDefaults?.string(forKey: SharedDefaults.selectedModelKey) ?? "base"
+            do {
+                try await loadModel(named: modelName)
+            } catch {
+                writeRecordingFailure(error: "Failed to load model: \(error.localizedDescription)")
+                return
+            }
+        }
+
+        do {
+            let text = try await transcribe(samples: samples, language: "auto")
+            let result = SharedDefaults.TranscriptionResult(
+                text: text,
+                status: .completed,
+                requestTimestamp: Date().timeIntervalSince1970,
+                completedTimestamp: Date().timeIntervalSince1970,
+                error: nil
+            )
+            print("[TranscriptionService] Keyboard transcription complete: \(text)")
+            SharedDefaults.writeResult(result)
+            DarwinNotificationCenter.shared.post(SharedDefaults.transcriptionDoneNotificationName)
+            await MainActor.run {
+                isTranscribing = false
+                lastTranscription = text
+                statusMessage = text.isEmpty ? "No speech detected" : "Transcribed: \(text.prefix(60))"
+            }
+            try? FileManager.default.removeItem(at: url)
+        } catch {
+            writeRecordingFailure(error: "Transcription failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Decode a recorded audio file (written by AVAudioFile at 16 kHz mono Float32) into
+    /// the [Float] samples WhisperKit expects. Handles the file header correctly.
+    private func loadSamplesFromFile(_ url: URL) -> [Float]? {
+        guard let file = try? AVAudioFile(forReading: url) else { return nil }
+        let format = file.processingFormat
+        let frameCount = AVAudioFrameCount(file.length)
+        guard frameCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        do { try file.read(into: buffer) } catch { return nil }
+        guard let channels = buffer.floatChannelData else { return nil }
+        return Array(UnsafeBufferPointer(start: channels[0], count: Int(buffer.frameLength)))
     }
     
     private func createTranscriptionRequest(for url: URL) -> SharedDefaults.TranscriptionRequest? {
