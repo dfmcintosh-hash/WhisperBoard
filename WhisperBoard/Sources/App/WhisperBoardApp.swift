@@ -21,7 +21,7 @@ private struct RootView: View {
     @ObservedObject private var launcher = DictationLauncher.shared
 
     var body: some View {
-        ContentView()
+        MainTabView()
             .fullScreenCover(isPresented: $launcher.pendingDictation) {
                 DictationView()
             }

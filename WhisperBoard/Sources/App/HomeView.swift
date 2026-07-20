@@ -1,9 +1,8 @@
 import SwiftUI
 
-struct ContentView: View {
+struct HomeView: View {
     @StateObject private var service = TranscriptionService.shared
     @StateObject private var modelManager = ModelManager()
-    @State private var showSettings = false
     @State private var testText = ""
 
     var body: some View {
@@ -35,16 +34,6 @@ struct ContentView: View {
             }
             .navigationTitle("WhisperBoard")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
-                        Image(systemName: "gearshape.fill")
-                    }
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-            }
         }
     }
 
@@ -230,7 +219,7 @@ struct ContentView: View {
                     try await modelManager.downloadModel(model)
                     modelManager.saveSelectedModel(model)
                 } catch {
-                    print("[ContentView] Download failed: \(error)")
+                    print("[HomeView] Download failed: \(error)")
                 }
             }
         }
@@ -294,4 +283,4 @@ extension View {
     }
 }
 
-#Preview { ContentView() }
+#Preview { HomeView() }
