@@ -4,6 +4,42 @@ import UIKit
 import AVFoundation
 import WhisperKit
 
+enum CaptureOwner: String, Equatable { case dictation, chat, keyboard }
+enum CaptureError: Error, Equatable { case busy(CaptureOwner), cancelled, transcriptionFailed(String) }
+struct TranscriptionResult: Equatable { let text: String }
+
+protocol AudioCapturing: AnyObject {
+    var onRecordingFinished: ((URL) -> Void)? { get set }
+    func startRecording(to url: URL) throws
+    func stopRecording()
+}
+
+extension AudioCapture: AudioCapturing {}
+
+final class AudioActivityGate {
+    enum Owner: Equatable { case microphone(CaptureOwner), speech }
+    static let shared = AudioActivityGate()
+    private let lock = NSLock()
+    private var owner: Owner?
+
+    func acquire(_ requested: Owner) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard owner == nil else { return false }
+        owner = requested
+        return true
+    }
+
+    func release(_ expected: Owner) {
+        lock.lock(); defer { lock.unlock() }
+        if owner == expected { owner = nil }
+    }
+
+    var current: Owner? {
+        lock.lock(); defer { lock.unlock() }
+        return owner
+    }
+}
+
 /// Background service running in the main app that monitors the App Group
 /// shared container for new audio from the keyboard extension, transcribes
 /// it with WhisperKit, and writes the result back for the keyboard to pick up.
@@ -33,6 +69,11 @@ final class TranscriptionService: ObservableObject {
     private let queue = DispatchQueue(label: "com.whisperboard.transcription", qos: .userInitiated)
     private var audioCapture: AudioCapture?
     private var currentRecordingURL: URL?
+    private var scopedAudioCapture: AudioCapturing?
+    private var scopedContinuation: CheckedContinuation<TranscriptionResult, Error>?
+    private let audioCaptureFactory: () -> AudioCapturing
+    private let permissionProvider: (() async -> Bool)?
+    private let scopedTranscriber: ((URL) async throws -> String)?
     
     // Thread-safe access to whisperKit using actor
     private actor WhisperKitStore {
@@ -45,7 +86,88 @@ final class TranscriptionService: ObservableObject {
     // MARK: - Singleton
 
     static let shared = TranscriptionService()
-    private init() {}
+    init(
+        audioCaptureFactory: @escaping () -> AudioCapturing = { AudioCapture() },
+        permissionProvider: (() async -> Bool)? = nil,
+        scopedTranscriber: ((URL) async throws -> String)? = nil
+    ) {
+        self.audioCaptureFactory = audioCaptureFactory
+        self.permissionProvider = permissionProvider
+        self.scopedTranscriber = scopedTranscriber
+    }
+
+    var activeCaptureOwner: CaptureOwner? {
+        guard case .microphone(let owner) = AudioActivityGate.shared.current else { return nil }
+        return owner
+    }
+
+    func recordAndTranscribe(owner: CaptureOwner) async throws -> TranscriptionResult {
+        guard AudioActivityGate.shared.acquire(.microphone(owner)) else {
+            if case .microphone(let current) = AudioActivityGate.shared.current { throw CaptureError.busy(current) }
+            throw CaptureError.busy(owner)
+        }
+        let permitted: Bool
+        if let permissionProvider { permitted = await permissionProvider() }
+        else { permitted = await checkMicrophonePermission() }
+        guard permitted else {
+            AudioActivityGate.shared.release(.microphone(owner))
+            throw CaptureError.transcriptionFailed("Microphone permission denied")
+        }
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RuminateCapture", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("\(UUID().uuidString).wav")
+        let capture = audioCaptureFactory()
+        scopedAudioCapture = capture
+        capture.onRecordingFinished = { [weak self] url in
+            Task { await self?.finishScopedCapture(url: url, owner: owner) }
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            scopedContinuation = continuation
+            do { try capture.startRecording(to: url) }
+            catch {
+                scopedContinuation = nil
+                scopedAudioCapture = nil
+                AudioActivityGate.shared.release(.microphone(owner))
+                continuation.resume(throwing: CaptureError.transcriptionFailed(error.localizedDescription))
+            }
+        }
+    }
+
+    func stopCapture(owner: CaptureOwner) {
+        guard activeCaptureOwner == owner else { return }
+        scopedAudioCapture?.stopRecording()
+    }
+
+    func cancelCapture(owner: CaptureOwner) {
+        guard activeCaptureOwner == owner else { return }
+        scopedAudioCapture?.onRecordingFinished = nil
+        scopedAudioCapture?.stopRecording()
+        scopedAudioCapture = nil
+        let continuation = scopedContinuation
+        scopedContinuation = nil
+        AudioActivityGate.shared.release(.microphone(owner))
+        continuation?.resume(throwing: CaptureError.cancelled)
+    }
+
+    private func finishScopedCapture(url: URL, owner: CaptureOwner) async {
+        guard activeCaptureOwner == owner, let continuation = scopedContinuation else { return }
+        scopedContinuation = nil
+        scopedAudioCapture = nil
+        defer { AudioActivityGate.shared.release(.microphone(owner)); try? FileManager.default.removeItem(at: url) }
+        do {
+            let text: String
+            if let scopedTranscriber { text = try await scopedTranscriber(url) }
+            else if let samples = loadSamplesFromFile(url) { text = try await transcribe(samples: samples) }
+            else { throw CaptureError.transcriptionFailed("Unable to read recorded audio") }
+            continuation.resume(returning: TranscriptionResult(text: text))
+        } catch let error as CaptureError {
+            continuation.resume(throwing: error)
+        } catch {
+            continuation.resume(throwing: CaptureError.transcriptionFailed(error.localizedDescription))
+        }
+    }
 
     // MARK: - Service Lifecycle
 

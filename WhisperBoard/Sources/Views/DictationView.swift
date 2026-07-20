@@ -10,6 +10,7 @@ struct DictationView: View {
 
     @State private var phase: Phase = .recording
     @State private var resultText = ""
+    @State private var captureTask: Task<Void, Never>?
 
     private enum Phase { case recording, transcribing, done }
 
@@ -59,7 +60,8 @@ struct DictationView: View {
             .disabled(phase == .transcribing)
 
             Button("Cancel") {
-                service.stopRecording()
+                service.cancelCapture(owner: .dictation)
+                captureTask?.cancel()
                 dismiss()
             }
             .font(.subheadline)
@@ -67,12 +69,6 @@ struct DictationView: View {
             .padding(.bottom)
         }
         .onAppear { startRecording() }
-        .onChange(of: service.isTranscribing) { _, transcribing in
-            // Transcription finished (success or failure) → capture + copy.
-            if phase == .transcribing && !transcribing {
-                finish()
-            }
-        }
     }
 
     // MARK: - Derived UI
@@ -110,14 +106,21 @@ struct DictationView: View {
 
     private func startRecording() {
         phase = .recording
-        service.startDictationRecording()
+        captureTask = Task {
+            do {
+                let result = try await service.recordAndTranscribe(owner: .dictation)
+                await MainActor.run { finish(result.text) }
+            } catch {
+                await MainActor.run { finish("") }
+            }
+        }
     }
 
     private func primaryAction() {
         switch phase {
         case .recording:
             phase = .transcribing
-            service.stopRecording()
+            service.stopCapture(owner: .dictation)
         case .transcribing:
             break
         case .done:
@@ -125,8 +128,8 @@ struct DictationView: View {
         }
     }
 
-    private func finish() {
-        resultText = service.lastTranscription
+    private func finish(_ text: String) {
+        resultText = text
         if !resultText.isEmpty {
             UIPasteboard.general.string = resultText
         }
