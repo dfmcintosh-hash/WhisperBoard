@@ -10,7 +10,20 @@ struct WhisperBoardApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
+    }
+}
+
+/// Hosts ContentView and presents the dictation capture screen when the Action Button /
+/// Shortcut (DictateIntent) requests it via DictationLauncher.
+private struct RootView: View {
+    @ObservedObject private var launcher = DictationLauncher.shared
+
+    var body: some View {
+        ContentView()
+            .fullScreenCover(isPresented: $launcher.pendingDictation) {
+                DictationView()
+            }
     }
 }

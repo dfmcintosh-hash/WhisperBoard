@@ -209,6 +209,14 @@ final class TranscriptionService: ObservableObject {
         // and the keyboard times out. It is released when the next recording replaces it.
         audioCapture?.stopRecording()
     }
+
+    /// App-initiated dictation (Action Button / Shortcut). Same capture + transcribe path
+    /// as the keyboard handoff, but driven by the app's own UI. The result lands in the
+    /// published `lastTranscription`; the dictation view copies it to the clipboard.
+    func startDictationRecording() {
+        Task { @MainActor in lastTranscription = "" }
+        handleStartRecordingRequest()
+    }
     
     private func processRecordedAudio(_ url: URL) async {
         await MainActor.run { isTranscribing = true }
@@ -294,8 +302,9 @@ final class TranscriptionService: ObservableObject {
         )
         SharedDefaults.writeResult(result)
         DarwinNotificationCenter.shared.post(SharedDefaults.transcriptionDoneNotificationName)
-        
+
         Task { @MainActor in
+            isTranscribing = false   // so the dictation view unblocks on failure/empty
             statusMessage = "Recording error: \(error)"
         }
     }
