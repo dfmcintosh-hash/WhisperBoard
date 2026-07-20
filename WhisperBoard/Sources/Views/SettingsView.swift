@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Settings for model management, language selection, and app info.
-struct SettingsView: View {
+struct WhisperSettingsView: View {
 
     @StateObject private var modelManager = ModelManager()
     @State private var selectedLanguage: String = "Auto-detect"
@@ -211,4 +211,4 @@ struct VoiceCommandRow: View {
     }
 }
 
-#Preview { SettingsView() }
+#Preview { WhisperSettingsView() }

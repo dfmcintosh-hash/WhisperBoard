@@ -3,6 +3,7 @@ import Combine
 
 @MainActor
 final class RuminateConfig: ObservableObject {
+    static let shared = RuminateConfig()
     static let defaultBaseURL = "https://devin-mc62-g41-00.tail492116.ts.net/ruminate"
     static let tokenKey = "ruminateBearerToken"
 
