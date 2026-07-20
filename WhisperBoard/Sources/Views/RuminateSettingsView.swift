@@ -7,7 +7,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Ruminate Connection") {
-                    TextField("Funnel URL", text: $model.config.baseURLString)
+                    TextField("Funnel URL", text: $model.baseURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -66,6 +66,9 @@ final class RuminateSettingsViewModel: ObservableObject {
     }
 
     let config = RuminateConfig.shared
+    @Published var baseURLString: String {
+        didSet { config.baseURLString = baseURLString }
+    }
     @Published var tokenDraft: String
     @Published var autoRead = UserDefaults.standard.bool(forKey: "ruminateAutoRead") {
         didSet { UserDefaults.standard.set(autoRead, forKey: "ruminateAutoRead") }
@@ -76,7 +79,10 @@ final class RuminateSettingsViewModel: ObservableObject {
     @Published var showingError = false
     @Published var errorMessage = ""
 
-    init() { tokenDraft = RuminateConfig.shared.token }
+    init() {
+        baseURLString = RuminateConfig.shared.baseURLString
+        tokenDraft = RuminateConfig.shared.token
+    }
 
     func saveToken() {
         do { try config.saveToken(tokenDraft); health = .unconfigured }
