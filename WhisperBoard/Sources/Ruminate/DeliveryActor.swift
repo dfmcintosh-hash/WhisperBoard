@@ -64,7 +64,8 @@ actor DeliveryActor {
             var cursor: String?
             repeat {
                 let page = try await client.history(cursor: cursor, limit: 100)
-                await reconcile(page.turns)
+                try await store.merge(history: page.turns)
+                await cancelResolvedPolls()
                 cursor = page.nextCursor
             } while cursor != nil
             channelState = .idle
@@ -150,19 +151,10 @@ actor DeliveryActor {
         }
     }
 
-    private func reconcile(_ history: [HistoryTurn]) async {
-        for userTurn in history where userTurn.role == "user" {
-            guard let clientId = userTurn.clientTurnId, await store.turn(id: clientId) != nil else { continue }
-            try? await store.update(clientId) {
-                $0.serverTurnId = userTurn.turnId
-                if $0.state == .queued || $0.state == .sending { $0.state = .accepted }
-            }
-            if let reply = history.first(where: { $0.role != "user" && $0.replyTo == userTurn.turnId }) {
-                try? await store.update(clientId) {
-                    guard $0.state != .complete else { return }
-                    $0.state = .complete; $0.reply = reply.text
-                }
-                cancelPolling(for: clientId)
+    private func cancelResolvedPolls() async {
+        for id in Array(polling.keys) {
+            if await store.turn(id: id)?.state == .complete {
+                cancelPolling(for: id)
             }
         }
     }

@@ -84,6 +84,43 @@ actor ChatStore {
         storedTurns = next
     }
 
+    func merge(history: [HistoryTurn]) throws {
+        var next = storedTurns
+        let userTurns = history.filter { $0.role == "user" }.sorted { $0.ord < $1.ord }
+        for serverUser in userTurns {
+            let reply = history.first { $0.role != "user" && $0.replyTo == serverUser.turnId }
+            let index = next.firstIndex {
+                $0.serverTurnId == serverUser.turnId ||
+                (serverUser.clientTurnId != nil && $0.id == serverUser.clientTurnId)
+            }
+            if let index {
+                next[index].serverTurnId = serverUser.turnId
+                next[index].serverOrd = serverUser.ord
+                if let reply {
+                    next[index].reply = reply.text
+                    next[index].state = .complete
+                } else if next[index].state == .queued || next[index].state == .sending {
+                    next[index].state = .accepted
+                }
+            } else {
+                let id = serverUser.clientTurnId ?? "server:\(serverUser.turnId)"
+                next.append(LocalTurn(
+                    id: id,
+                    text: serverUser.text,
+                    seq: (next.map(\.seq).max() ?? 0) + 1,
+                    state: reply == nil ? .accepted : .complete,
+                    serverTurnId: serverUser.turnId,
+                    reply: reply?.text,
+                    createdAt: Date(timeIntervalSince1970: 0),
+                    serverOrd: serverUser.ord,
+                    restoredFromHistory: true
+                ))
+            }
+        }
+        try persist(next)
+        storedTurns = next
+    }
+
     private func persist(_ turns: [LocalTurn]) throws {
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
