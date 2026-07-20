@@ -65,6 +65,14 @@ final class TranscriptionService: ObservableObject {
             self?.handleStartRecordingRequest()
         }
 
+        // Observe request to STOP recording (keyboard's second tap) → stop + transcribe now.
+        // Without this the recording only ends at the 60s safety timeout, and the keyboard
+        // poll times out first — so nothing was ever inserted.
+        DarwinNotificationCenter.shared.observe("com.captainsos.whisperboard.stopRecording") { [weak self] in
+            print("[TranscriptionService] Received stopRecording notification from keyboard")
+            self?.stopRecording()
+        }
+
         // Mark service as running in shared defaults
         SharedDefaults.sharedDefaults?.set(true, forKey: SharedDefaults.serviceRunningKey)
         

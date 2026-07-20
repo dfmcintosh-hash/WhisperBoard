@@ -98,10 +98,17 @@ class KeyboardViewController: UIInputViewController {
     // MARK: - Actions
     @objc private func dictateTapped() {
         if isWaitingForTranscription {
-            // Cancel/close
-            isWaitingForTranscription = false
-            pollTimer?.invalidate()
-            updateUI()
+            // Second tap = STOP recording now and transcribe what was captured.
+            // (Previously this just cancelled, so recording ran the full 60s and the
+            //  poll timed out before any result — nothing ever got inserted.)
+            SharedDefaults.sharedDefaults?.set(false, forKey: "shouldStartRecording")
+            SharedDefaults.sharedDefaults?.synchronize()
+            print("[Keyboard] Posting stopRecording notification")
+            DarwinNotificationCenter.shared.post("com.captainsos.whisperboard.stopRecording")
+            statusLabel.text = "Transcribing…"
+            dictateButton.backgroundColor = .systemBlue
+            // Restart the poll so transcription has a fresh window to return the result.
+            startPolling()
         } else {
             startDictation()
         }
@@ -125,7 +132,7 @@ class KeyboardViewController: UIInputViewController {
             DarwinNotificationCenter.shared.post("com.captainsos.whisperboard.startRecording")
             
             isWaitingForTranscription = true
-            statusLabel.text = "Recording in app...\n(Tap to cancel)"
+            statusLabel.text = "Recording… tap to STOP"
             dictateButton.backgroundColor = .systemOrange
             
             // Start polling for result
