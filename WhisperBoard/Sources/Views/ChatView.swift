@@ -17,7 +17,7 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             ForEach(model.turns) { turn in
-                                TurnBubble(turn: turn, retry: { model.retry(turn) })
+                                TurnBubble(turn: turn, retry: { model.retry(turn) }, speak: { model.speak(turn) })
                                     .id(turn.id)
                             }
                         }
@@ -30,7 +30,7 @@ struct ChatView: View {
 
                 HStack(alignment: .bottom, spacing: 10) {
                     Button { model.captureDraft() } label: {
-                        Image(systemName: "mic.fill").font(.title3)
+                        Image(systemName: model.isCapturing ? "stop.circle.fill" : "mic.fill").font(.title3)
                     }
                     .disabled(!model.config.isConfigured)
 
@@ -61,11 +61,13 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var turns: [LocalTurn] = []
     @Published var showingError = false
     @Published var errorMessage = ""
+    @Published private(set) var isCapturing = false
 
     let config = RuminateConfig.shared
     private let store: ChatStore
     private var delivery: DeliveryActor?
     private var deliveryURL: URL?
+    private lazy var speechReader = SpeechReader(store: store)
 
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -105,9 +107,27 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    func speak(_ turn: LocalTurn) {
+        guard let reply = turn.reply else { return }
+        _ = speechReader.speak(text: reply, turnId: turn.id)
+    }
+
     func captureDraft() {
-        errorMessage = "Voice capture is being connected in the next build step."
-        showingError = true
+        if isCapturing {
+            TranscriptionService.shared.stopCapture(owner: .chat)
+            return
+        }
+        isCapturing = true
+        Task {
+            defer { isCapturing = false }
+            do {
+                let result = try await TranscriptionService.shared.recordAndTranscribe(owner: .chat)
+                draft = result.text
+            } catch CaptureError.busy(let owner) {
+                errorMessage = "\(owner.rawValue.capitalized) is using the microphone."
+                showingError = true
+            } catch { present(error) }
+        }
     }
 
     private func ensureDelivery() -> DeliveryActor? {
@@ -125,6 +145,8 @@ final class ChatViewModel: ObservableObject {
     private func monitorUpdates() async {
         for _ in 0..<25 {
             turns = await store.turns()
+            let autoRead = UserDefaults.standard.bool(forKey: "ruminateAutoRead")
+            for turn in turns { await speechReader.autoReadIfEnabled(turn: turn, enabled: autoRead) }
             if !turns.contains(where: { $0.state == .sending || $0.state == .accepted }) { return }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -139,11 +161,17 @@ final class ChatViewModel: ObservableObject {
 private struct TurnBubble: View {
     let turn: LocalTurn
     let retry: () -> Void
+    let speak: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
             bubble(turn.text, outgoing: true)
-            if let reply = turn.reply { bubble(reply, outgoing: false) }
+            if let reply = turn.reply {
+                HStack(alignment: .bottom) {
+                    bubble(reply, outgoing: false)
+                    Button(action: speak) { Image(systemName: "speaker.wave.2.fill") }.buttonStyle(.plain)
+                }
+            }
             stateRow
         }
     }
