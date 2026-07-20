@@ -203,8 +203,11 @@ final class TranscriptionService: ObservableObject {
     }
     
     func stopRecording() {
+        // Do NOT nil audioCapture here. AudioCapture.stopRecording() finishes ASYNC and
+        // captures self weakly — dropping the only strong reference on the next line can
+        // deallocate it before it fires onRecordingFinished, so transcription never runs
+        // and the keyboard times out. It is released when the next recording replaces it.
         audioCapture?.stopRecording()
-        audioCapture = nil
     }
     
     private func processRecordedAudio(_ url: URL) async {
@@ -220,6 +223,10 @@ final class TranscriptionService: ObservableObject {
             writeRecordingFailure(error: "Audio file was empty or unreadable")
             return
         }
+
+        // On-screen diagnostic: proves audio was actually captured and how much.
+        let seconds = Double(samples.count) / 16000.0
+        await MainActor.run { statusMessage = String(format: "Captured %.1fs (%d samples) — transcribing…", seconds, samples.count) }
 
         // Ensure a model is loaded before transcribing.
         if !isModelLoaded {
