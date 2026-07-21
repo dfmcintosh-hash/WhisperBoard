@@ -1,0 +1,38 @@
+name: ASC certificates (list / prune dev)
+on:
+  workflow_dispatch:
+    inputs:
+      revoke_dev:
+        description: "revoke all DEVELOPMENT-type certificates (CI ephemerals)"
+        default: "no"
+
+jobs:
+  certs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List / prune certificates
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          REVOKE_DEV: ${{ inputs.revoke_dev }}
+        run: |
+          pip -q install pyjwt cryptography requests
+          python3 << 'EOF'
+          import jwt, time, os, requests
+          token = jwt.encode(
+              {"iss": os.environ["ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 900, "aud": "appstoreconnect-v1"},
+              os.environ["KEY_CONTENT"], algorithm="ES256",
+              headers={"kid": os.environ["KEY_ID"]})
+          h = {"Authorization": f"Bearer {token}"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+          certs = requests.get(f"{base}/certificates?limit=200", headers=h).json()["data"]
+          for c in certs:
+              a = c["attributes"]
+              print(f"{c['id']} type={a['certificateType']} name={a.get('name')} "
+                    f"expires={a.get('expirationDate','?')[:10]}")
+              if os.environ.get("REVOKE_DEV") == "yes" and a["certificateType"] in ("DEVELOPMENT", "IOS_DEVELOPMENT"):
+                  r = requests.delete(f"{base}/certificates/{c['id']}", headers=h)
+                  print(f"  revoke: HTTP {r.status_code}")
+          EOF
