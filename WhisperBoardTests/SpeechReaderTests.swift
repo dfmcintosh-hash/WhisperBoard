@@ -70,6 +70,7 @@ private final class FakeSpeechSynth: SpeechSynth {
 private final class FakeAudioSession: AudioSessionManaging {
     var activateCount = 0
     var deactivateCount = 0
-    func activateForSpeech() throws { activateCount += 1 }
-    func deactivate() throws { deactivateCount += 1 }
+    private var nextLease: UInt64 = 0
+    func activateForSpeech() throws -> UInt64 { activateCount += 1; nextLease += 1; return nextLease }
+    func deactivate(lease: UInt64) { deactivateCount += 1 }
 }

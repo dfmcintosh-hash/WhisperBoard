@@ -10,30 +10,37 @@ protocol SpeechSynth: AnyObject {
 }
 
 protocol AudioSessionManaging: AnyObject {
-    func activateForSpeech() throws
-    func deactivate() throws
+    func activateForSpeech() throws -> UInt64
+    func deactivate(lease: UInt64)
 }
 
 final class SystemAudioSession: AudioSessionManaging {
-    func activateForSpeech() throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-        try session.setActive(true)
-    }
-    func deactivate() throws {
-        try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-    }
+    private let coordinator: AudioSessionCoordinator
+    init(coordinator: AudioSessionCoordinator = .shared) { self.coordinator = coordinator }
+    func activateForSpeech() throws -> UInt64 { try coordinator.acquireSpeech() }
+    func deactivate(lease: UInt64) { coordinator.release(lease) }
 }
 
 final class SystemSpeechSynth: NSObject, SpeechSynth, AVSpeechSynthesizerDelegate {
     var onFinish: (() -> Void)?
     private let synthesizer = AVSpeechSynthesizer()
+    private weak var currentUtterance: AVSpeechUtterance?
     override init() { super.init(); synthesizer.delegate = self }
     var isSpeaking: Bool { synthesizer.isSpeaking }
-    func speak(_ text: String) { synthesizer.speak(AVSpeechUtterance(string: text)) }
+    func speak(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        currentUtterance = utterance
+        synthesizer.speak(utterance)
+    }
     func stop() { synthesizer.stopSpeaking(at: .immediate) }
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { onFinish?() }
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { onFinish?() }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        guard currentUtterance === utterance else { return }
+        currentUtterance = nil; onFinish?()
+    }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        guard currentUtterance === utterance else { return }
+        currentUtterance = nil; onFinish?()
+    }
 }
 
 @MainActor
@@ -42,6 +49,7 @@ final class SpeechReader {
     private let session: AudioSessionManaging
     private let store: ChatStore
     private var observers: [NSObjectProtocol] = []
+    private var sessionLease: UInt64?
 
     init(synth: SpeechSynth = SystemSpeechSynth(), session: AudioSessionManaging = SystemAudioSession(), store: ChatStore) {
         self.synth = synth
@@ -70,7 +78,7 @@ final class SpeechReader {
         if synth.isSpeaking { synth.stop(); finished() }
         guard AudioActivityGate.shared.acquire(.speech) else { return false }
         do {
-            try session.activateForSpeech()
+            sessionLease = try session.activateForSpeech()
             synth.speak(text)
             return true
         } catch {
@@ -92,7 +100,10 @@ final class SpeechReader {
     }
 
     private func finished() {
-        try? session.deactivate()
+        guard let lease = sessionLease else { return }
+        sessionLease = nil
+        guard AudioActivityGate.shared.current == .speech else { return }
+        session.deactivate(lease: lease)
         AudioActivityGate.shared.release(.speech)
     }
 }

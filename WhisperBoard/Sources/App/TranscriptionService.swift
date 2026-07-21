@@ -67,7 +67,7 @@ final class TranscriptionService: ObservableObject {
 
     private var whisperKit: WhisperKit?
     private let queue = DispatchQueue(label: "com.whisperboard.transcription", qos: .userInitiated)
-    private var audioCapture: AudioCapture?
+    private var audioCapture: AudioCapturing?
     private var currentRecordingURL: URL?
     private var scopedAudioCapture: AudioCapturing?
     private var scopedContinuation: CheckedContinuation<TranscriptionResult, Error>?
@@ -115,7 +115,11 @@ final class TranscriptionService: ObservableObject {
         }
 
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RuminateCapture", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        catch {
+            AudioActivityGate.shared.release(.microphone(owner))
+            throw CaptureError.transcriptionFailed(error.localizedDescription)
+        }
         let url = directory.appendingPathComponent("\(UUID().uuidString).wav")
         let capture = audioCaptureFactory()
         scopedAudioCapture = capture
@@ -296,31 +300,40 @@ final class TranscriptionService: ObservableObject {
                 return
             }
             
-            // Start recording
-            audioCapture = AudioCapture()
-            currentRecordingURL = audioURL
-            
             do {
-                print("[TranscriptionService] Starting audio capture to: \(audioURL.path)")
-                try audioCapture?.startRecording(to: audioURL)
-                print("[TranscriptionService] Audio capture started successfully")
-                
-                // Set up callback for when recording finishes
-                audioCapture?.onRecordingFinished = { [weak self] url in
-                    print("[TranscriptionService] Recording finished, processing audio...")
-                    Task {
-                        await self?.processRecordedAudio(url)
-                    }
-                }
-                
-                // Auto-stop after 60 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
-                    self?.stopRecording()
-                }
-                
+                try startKeyboardCapture(to: audioURL)
             } catch {
                 writeRecordingFailure(error: "Failed to start recording: \(error.localizedDescription)")
             }
+        }
+    }
+
+    func startKeyboardCapture(to audioURL: URL) throws {
+        guard AudioActivityGate.shared.acquire(.microphone(.keyboard)) else {
+            if case .microphone(let current) = AudioActivityGate.shared.current { throw CaptureError.busy(current) }
+            throw CaptureError.busy(.keyboard)
+        }
+        let capture = audioCaptureFactory()
+        audioCapture = capture
+        currentRecordingURL = audioURL
+        capture.onRecordingFinished = { [weak self] url in
+            AudioActivityGate.shared.release(.microphone(.keyboard))
+            print("[TranscriptionService] Keyboard recording finished, processing audio...")
+            Task { await self?.processRecordedAudio(url) }
+        }
+        do {
+            print("[TranscriptionService] Starting keyboard capture to: \(audioURL.path)")
+            try capture.startRecording(to: audioURL)
+            print("[TranscriptionService] Keyboard audio capture started")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self, weak capture] in
+                guard self?.audioCapture === capture else { return }
+                self?.stopRecording()
+            }
+        } catch {
+            capture.onRecordingFinished = nil
+            audioCapture = nil
+            AudioActivityGate.shared.release(.microphone(.keyboard))
+            throw error
         }
     }
     

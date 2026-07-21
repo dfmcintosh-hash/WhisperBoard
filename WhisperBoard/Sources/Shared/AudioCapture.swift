@@ -1,6 +1,62 @@
 import AVFoundation
 import Foundation
 
+protocol AudioSessionBackend: AnyObject {
+    func configureForRecording() throws
+    func configureForSpeech() throws
+    func deactivate() throws
+}
+
+final class SystemAudioSessionBackend: AudioSessionBackend {
+    func configureForRecording() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+        try session.setActive(true)
+    }
+    func configureForSpeech() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try session.setActive(true)
+    }
+    func deactivate() throws {
+        try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+}
+
+final class AudioSessionCoordinator {
+    static let shared = AudioSessionCoordinator(backend: SystemAudioSessionBackend())
+    private let backend: AudioSessionBackend
+    private let lock = NSLock()
+    private var generation: UInt64 = 0
+    private var activeLease: UInt64?
+
+    init(backend: AudioSessionBackend) { self.backend = backend }
+
+    func acquireRecording() throws -> UInt64 { try acquire { try backend.configureForRecording() } }
+    func acquireSpeech() throws -> UInt64 { try acquire { try backend.configureForSpeech() } }
+
+    func release(_ lease: UInt64) {
+        lock.lock(); defer { lock.unlock() }
+        guard activeLease == lease else { return }
+        activeLease = nil
+        do { try backend.deactivate() }
+        catch { print("[AudioSessionCoordinator] Warning: failed to deactivate: \(error)") }
+    }
+
+    func isCurrent(_ lease: UInt64) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return activeLease == lease
+    }
+
+    private func acquire(_ configure: () throws -> Void) throws -> UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        try configure()
+        generation &+= 1
+        activeLease = generation
+        return generation
+    }
+}
+
 /// Memory-efficient audio capture for keyboard extensions
 /// Writes directly to file in App Group container, never buffers in memory
 final class AudioCapture {
@@ -26,6 +82,8 @@ final class AudioCapture {
     private let inputNode: AVAudioInputNode
     private var state: CaptureState = .idle
     private var outputFile: AVAudioFile?
+    private let sessionCoordinator: AudioSessionCoordinator
+    private var audioSessionLease: UInt64?
     
     private let sampleRate: Double = 16000
     private let channels: AVAudioChannelCount = 1
@@ -40,8 +98,9 @@ final class AudioCapture {
     
     // MARK: - Initialization
     
-    init() {
+    init(sessionCoordinator: AudioSessionCoordinator = .shared) {
         self.inputNode = audioEngine.inputNode
+        self.sessionCoordinator = sessionCoordinator
     }
     
     // MARK: - Public Methods
@@ -76,11 +135,8 @@ final class AudioCapture {
             throw AudioCaptureError.captureInProgress
         }
         
-        // Configure audio session for recording
-        let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true)
+            audioSessionLease = try sessionCoordinator.acquireRecording()
         } catch {
             throw AudioCaptureError.audioSessionError(error)
         }
@@ -95,6 +151,7 @@ final class AudioCapture {
             channels: channels,
             interleaved: false
         ) else {
+            releaseAudioSession()
             throw AudioCaptureError.engineSetupFailed
         }
         
@@ -102,11 +159,13 @@ final class AudioCapture {
         do {
             outputFile = try AVAudioFile(forWriting: outputURL, settings: outputFormat.settings)
         } catch {
+            releaseAudioSession()
             throw AudioCaptureError.fileWriteFailed
         }
         
         // Create converter from input format to output format
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            releaseAudioSession()
             throw AudioCaptureError.engineSetupFailed
         }
         
@@ -141,6 +200,9 @@ final class AudioCapture {
             }
             print("[AudioCapture] Started recording to: \(outputURL.path)")
         } catch {
+            inputNode.removeTap(onBus: 0)
+            outputFile = nil
+            releaseAudioSession()
             throw AudioCaptureError.engineSetupFailed
         }
     }
@@ -184,12 +246,7 @@ final class AudioCapture {
             // Close file
             self.outputFile = nil
             
-            // Deactivate audio session
-            do {
-                try AVAudioSession.sharedInstance().setActive(false)
-            } catch {
-                print("[AudioCapture] Warning: Failed to deactivate audio session: \(error)")
-            }
+            self.releaseAudioSession()
             
             self.state = .idle
             self.onStateChanged?(.idle)
@@ -210,5 +267,11 @@ final class AudioCapture {
             return true
         }
         return false
+    }
+
+    private func releaseAudioSession() {
+        guard let lease = audioSessionLease else { return }
+        audioSessionLease = nil
+        sessionCoordinator.release(lease)
     }
 }
