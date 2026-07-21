@@ -1,15 +1,21 @@
 name: ASC build status (diagnostic)
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      fix:
+        description: "attach latest build to the groups the previous build has"
+        default: "no"
 
 jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: Query App Store Connect builds
+      - name: Query App Store Connect builds + groups
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          DO_FIX: ${{ inputs.fix }}
         run: |
           pip -q install pyjwt cryptography requests
           python3 << 'EOF'
@@ -19,16 +25,33 @@ jobs:
                "exp": int(time.time()) + 900, "aud": "appstoreconnect-v1"},
               os.environ["KEY_CONTENT"], algorithm="ES256",
               headers={"kid": os.environ["KEY_ID"]})
-          h = {"Authorization": f"Bearer {token}"}
-          apps = requests.get(
-              "https://api.appstoreconnect.apple.com/v1/apps"
-              "?filter[bundleId]=com.captainsos.whisperboard", headers=h).json()
-          app_id = apps["data"][0]["id"]
-          builds = requests.get(
-              f"https://api.appstoreconnect.apple.com/v1/builds"
-              f"?filter[app]={app_id}&sort=-uploadedDate&limit=6"
-              f"&fields[builds]=version,processingState,uploadedDate,expired", headers=h).json()
-          for b in builds["data"]:
-              a = b["attributes"]
-              print(f"build {a['version']}: {a['processingState']} uploaded={a['uploadedDate']} expired={a['expired']}")
+          h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          base = "https://api.appstoreconnect.apple.com/v1"
+          app_id = requests.get(f"{base}/apps?filter[bundleId]=com.captainsos.whisperboard",
+                                headers=h).json()["data"][0]["id"]
+          groups = requests.get(f"{base}/betaGroups?filter[app]={app_id}", headers=h).json()["data"]
+          for g in groups:
+              a = g["attributes"]
+              print(f"group {g['id']} name={a['name']} internal={a['isInternalGroup']} "
+                    f"allBuilds={a.get('hasAccessToAllBuilds')}")
+          builds = requests.get(f"{base}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=2"
+                                f"&fields[builds]=version,processingState", headers=h).json()["data"]
+          by_ver = {}
+          for b in builds:
+              gs = requests.get(f"{base}/builds/{b['id']}/betaGroups", headers=h).json().get("data", [])
+              ids = [g["id"] for g in gs]
+              by_ver[b["attributes"]["version"]] = (b["id"], ids)
+              print(f"build {b['attributes']['version']}: groups={ids}")
+          vers = sorted(by_ver, key=int, reverse=True)
+          if len(vers) == 2 and os.environ.get("DO_FIX") == "yes":
+              newest, prev = vers[0], vers[1]
+              nid, ngroups = by_ver[newest]
+              _, pgroups = by_ver[prev]
+              missing = [g for g in pgroups if g not in ngroups]
+              for gid in missing:
+                  r = requests.post(f"{base}/betaGroups/{gid}/relationships/builds",
+                                    headers=h, json={"data": [{"type": "builds", "id": nid}]})
+                  print(f"attach build {newest} -> group {gid}: HTTP {r.status_code}")
+              if not missing:
+                  print(f"no fix needed: build {newest} already in prev build's groups")
           EOF
