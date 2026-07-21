@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @StateObject private var model = ChatViewModel()
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,7 @@ struct ChatView: View {
                     .onChange(of: model.turns.count) { _, _ in
                         if let id = model.turns.last?.id { proxy.scrollTo(id, anchor: .bottom) }
                     }
+                    .scrollDismissesKeyboard(.interactively)
                 }
 
                 HStack(alignment: .bottom, spacing: 10) {
@@ -37,8 +39,9 @@ struct ChatView: View {
                     TextField("Message RUMINATE", text: $model.draft, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...5)
+                        .focused($inputFocused)
 
-                    Button { model.sendDraft() } label: {
+                    Button { inputFocused = false; model.sendDraft() } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title2)
                     }
                     .disabled(!model.canSend)
@@ -47,6 +50,12 @@ struct ChatView: View {
                 .background(.bar)
             }
             .navigationTitle("Ruminate")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { inputFocused = false }
+                }
+            }
             .task { await model.load() }
             .alert("Ruminate", isPresented: $model.showingError) {
                 Button("OK", role: .cancel) {}
@@ -191,7 +200,7 @@ private struct TurnBubble: View {
     @ViewBuilder private var stateRow: some View {
         switch turn.state {
         case .queued:
-            Label("Offline - queued", systemImage: "icloud.slash").font(.caption).foregroundStyle(.secondary)
+            Label("Queued", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
         case .sending, .accepted:
             HStack { ProgressView().controlSize(.small); Text("Still working...").font(.caption) }
         case .failed, .failedAuth:
