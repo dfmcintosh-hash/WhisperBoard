@@ -1,0 +1,34 @@
+name: ASC build status (diagnostic)
+on: workflow_dispatch
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query App Store Connect builds
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          pip -q install pyjwt cryptography requests
+          python3 << 'EOF'
+          import jwt, time, os, requests
+          token = jwt.encode(
+              {"iss": os.environ["ISSUER_ID"], "iat": int(time.time()),
+               "exp": int(time.time()) + 900, "aud": "appstoreconnect-v1"},
+              os.environ["KEY_CONTENT"], algorithm="ES256",
+              headers={"kid": os.environ["KEY_ID"]})
+          h = {"Authorization": f"Bearer {token}"}
+          apps = requests.get(
+              "https://api.appstoreconnect.apple.com/v1/apps"
+              "?filter[bundleId]=com.captainsos.whisperboard", headers=h).json()
+          app_id = apps["data"][0]["id"]
+          builds = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/builds"
+              f"?filter[app]={app_id}&sort=-uploadedDate&limit=6"
+              f"&fields[builds]=version,processingState,uploadedDate,expired", headers=h).json()
+          for b in builds["data"]:
+              a = b["attributes"]
+              print(f"build {a['version']}: {a['processingState']} uploaded={a['uploadedDate']} expired={a['expired']}")
+          EOF
