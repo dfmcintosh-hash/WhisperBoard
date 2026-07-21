@@ -3,14 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       fix:
-        description: "attach latest build to the groups the previous build has"
+        description: "set usesNonExemptEncryption=false on builds where it is unanswered"
         default: "no"
 
 jobs:
   status:
     runs-on: ubuntu-latest
     steps:
-      - name: Query App Store Connect builds + groups
+      - name: Query App Store Connect builds
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
@@ -29,29 +29,17 @@ jobs:
           base = "https://api.appstoreconnect.apple.com/v1"
           app_id = requests.get(f"{base}/apps?filter[bundleId]=com.captainsos.whisperboard",
                                 headers=h).json()["data"][0]["id"]
-          groups = requests.get(f"{base}/betaGroups?filter[app]={app_id}", headers=h).json()["data"]
-          for g in groups:
-              a = g["attributes"]
-              print(f"group {g['id']} name={a['name']} internal={a['isInternalGroup']} "
-                    f"allBuilds={a.get('hasAccessToAllBuilds')}")
-          builds = requests.get(f"{base}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=2"
-                                f"&fields[builds]=version,processingState", headers=h).json()["data"]
-          by_ver = {}
+          builds = requests.get(
+              f"{base}/builds?filter[app]={app_id}&sort=-uploadedDate&limit=4"
+              f"&fields[builds]=version,processingState,usesNonExemptEncryption",
+              headers=h).json()["data"]
           for b in builds:
-              gs = requests.get(f"{base}/builds/{b['id']}/betaGroups", headers=h).json().get("data", [])
-              ids = [g["id"] for g in gs]
-              by_ver[b["attributes"]["version"]] = (b["id"], ids)
-              print(f"build {b['attributes']['version']}: groups={ids}")
-          vers = sorted(by_ver, key=int, reverse=True)
-          if len(vers) == 2 and os.environ.get("DO_FIX") == "yes":
-              newest, prev = vers[0], vers[1]
-              nid, ngroups = by_ver[newest]
-              _, pgroups = by_ver[prev]
-              missing = [g for g in pgroups if g not in ngroups]
-              for gid in missing:
-                  r = requests.post(f"{base}/betaGroups/{gid}/relationships/builds",
-                                    headers=h, json={"data": [{"type": "builds", "id": nid}]})
-                  print(f"attach build {newest} -> group {gid}: HTTP {r.status_code}")
-              if not missing:
-                  print(f"no fix needed: build {newest} already in prev build's groups")
+              a = b["attributes"]
+              print(f"build {a['version']}: {a['processingState']} "
+                    f"usesNonExemptEncryption={a.get('usesNonExemptEncryption')}")
+              if os.environ.get("DO_FIX") == "yes" and a.get("usesNonExemptEncryption") is None:
+                  r = requests.patch(f"{base}/builds/{b['id']}", headers=h,
+                                     json={"data": {"type": "builds", "id": b["id"],
+                                           "attributes": {"usesNonExemptEncryption": False}}})
+                  print(f"  compliance patch build {a['version']}: HTTP {r.status_code}")
           EOF
