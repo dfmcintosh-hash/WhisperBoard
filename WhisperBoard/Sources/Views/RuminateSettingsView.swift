@@ -85,8 +85,10 @@ final class RuminateSettingsViewModel: ObservableObject {
     }
 
     func saveToken() {
-        do { try config.saveToken(tokenDraft); health = .unconfigured }
-        catch { present(error) }
+        do {
+            try config.saveToken(tokenDraft)
+            Task { await checkHealth() }
+        } catch { present(error) }
     }
 
     func checkHealth() async {
