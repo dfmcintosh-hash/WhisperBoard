@@ -6,7 +6,7 @@ struct MainTabView: View {
             HomeView()
                 .tabItem { Label("Home", systemImage: "waveform") }
 
-            ChatView()
+            BoardChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
 
             SettingsView()
