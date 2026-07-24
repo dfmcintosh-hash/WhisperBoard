@@ -10,12 +10,9 @@ final class BoardThreadControllerTests: XCTestCase {
         try await store.setCursor("full-cursor", mode: .full)
         let row = BoardJournalRow(author: "x", kind: "status", text: "row", claimID: "c", replyTo: nil, timestamp: "t", ord: 1)
         let client = PollBoardClient(page: BoardHistoryPage(rows: [row], nextCursor: "next", eof: true))
-        let controller = BoardThreadController(interval: 60, sleep: { _ in })
+        let controller = BoardThreadController(interval: 60)
         controller.start(boardID: id, mode: .full, store: store, client: client)
-        for _ in 0..<20 {
-            if !controller.rows.isEmpty { break }
-            await Task.yield()
-        }
+        await controller.refreshNow()
         controller.stop()
         XCTAssertEqual(controller.rows, [row])
         let call = await client.lastCall()

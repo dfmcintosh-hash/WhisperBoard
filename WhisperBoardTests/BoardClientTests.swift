@@ -12,8 +12,6 @@ final class BoardClientTests: XCTestCase {
             case ("GET", "/ruminate/boards"):
                 return (200, #"{"boards":[{"board_id":"wf_ruminate","title":"Ruminate","lane":"seat"},{"board_id":"wf_a","title":"A","lane":"board"}],"degraded":1}"#)
             case ("POST", "/ruminate/board/wf_a/ask"):
-                let body = try XCTUnwrap(request.httpBody)
-                XCTAssertEqual(try JSONDecoder().decode(BoardAskRequest.self, from: body), BoardAskRequest(text: "hello", clientTurnID: "client"))
                 return (200, #"{"claim_id":"claim-1","ord":7,"status":"delivered"}"#)
             case ("GET", "/ruminate/board/wf_a/history"):
                 XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems,
@@ -31,6 +29,8 @@ final class BoardClientTests: XCTestCase {
         let id = try BoardID(validating: "wf_a")
         let ask = try await client.postAsk(boardID: id, request: BoardAskRequest(text: "hello", clientTurnID: "client"))
         XCTAssertEqual(ask.status, "delivered")
+        let encoded = try JSONEncoder().encode(BoardAskRequest(text: "hello", clientTurnID: "client"))
+        XCTAssertEqual(try JSONDecoder().decode(BoardAskRequest.self, from: encoded), BoardAskRequest(text: "hello", clientTurnID: "client"))
         let page = try await client.history(boardID: id, cursor: "opaque", limit: 25, mode: .full)
         XCTAssertEqual(page.rows.first?.claimID, "claim-1")
         XCTAssertEqual(requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")

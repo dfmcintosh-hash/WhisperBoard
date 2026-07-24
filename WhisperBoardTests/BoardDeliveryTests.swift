@@ -40,7 +40,8 @@ final class BoardDeliveryTests: XCTestCase {
         let coordinator = BoardDeliveryCoordinator(directory: directory, clientFactory: { _ in client })
         await coordinator.register(store: b)
         await coordinator.discoverAndFlush()
-        let aState = await a.ask(id: "a")?.state
+        let reloadedA = try BoardStore(boardID: BoardID(validating: "wf_a"), directory: directory)
+        let aState = await reloadedA.ask(id: "a")?.state
         let bState = await b.ask(id: "b")?.state
         let posted = await client.postedTexts()
         XCTAssertEqual(aState, .delivered)
