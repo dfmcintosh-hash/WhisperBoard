@@ -14,8 +14,10 @@ final class BoardStoreTests: XCTestCase {
         let row = BoardJournalRow(author: "Devin-mobile", kind: "ask", text: "question", claimID: "claim", replyTo: nil, timestamp: "t", ord: 4)
         try await store.merge(rows: [row])
         let reloaded = try BoardStore(boardID: id, directory: directory)
-        XCTAssertEqual(await reloaded.ask(id: ask.id)?.text, "question")
-        XCTAssertEqual(await reloaded.rows(), [row])
+        let savedAsk = await reloaded.ask(id: ask.id)
+        let savedRows = await reloaded.rows()
+        XCTAssertEqual(savedAsk?.text, "question")
+        XCTAssertEqual(savedRows, [row])
     }
 
     func testRowsDedupeAndModeCursorsRemainIndependent() async throws {
@@ -24,9 +26,12 @@ final class BoardStoreTests: XCTestCase {
         try await store.merge(rows: [row, row])
         try await store.setCursor("conversation-cursor", mode: .conversation)
         try await store.setCursor("full-cursor", mode: .full)
-        XCTAssertEqual(await store.rows().count, 1)
-        XCTAssertEqual(await store.cursor(mode: .conversation), "conversation-cursor")
-        XCTAssertEqual(await store.cursor(mode: .full), "full-cursor")
+        let rows = await store.rows()
+        let conversationCursor = await store.cursor(mode: .conversation)
+        let fullCursor = await store.cursor(mode: .full)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(conversationCursor, "conversation-cursor")
+        XCTAssertEqual(fullCursor, "full-cursor")
     }
 
     func testBoardFilesAreIsolated() async throws {
@@ -34,7 +39,9 @@ final class BoardStoreTests: XCTestCase {
         let a = try BoardStore(boardID: BoardID(validating: "wf_a"), directory: directory)
         let b = try BoardStore(boardID: BoardID(validating: "wf_b"), directory: directory)
         _ = try await a.enqueue(text: "A", clientTurnID: "a")
-        XCTAssertEqual(await a.asks().count, 1)
-        XCTAssertTrue(await b.asks().isEmpty)
+        let aAsks = await a.asks()
+        let bAsks = await b.asks()
+        XCTAssertEqual(aAsks.count, 1)
+        XCTAssertTrue(bAsks.isEmpty)
     }
 }
