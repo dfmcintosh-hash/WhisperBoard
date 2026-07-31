@@ -47,11 +47,15 @@ final class SystemSpeechSynth: NSObject, SpeechSynth, AVSpeechSynthesizerDelegat
 final class SpeechReader {
     private let synth: SpeechSynth
     private let session: AudioSessionManaging
-    private let store: ChatStore
+    private let store: ChatStore?
     private var observers: [NSObjectProtocol] = []
     private var sessionLease: UInt64?
 
-    init(synth: SpeechSynth = SystemSpeechSynth(), session: AudioSessionManaging = SystemAudioSession(), store: ChatStore) {
+    init(
+        synth: SpeechSynth = SystemSpeechSynth(),
+        session: AudioSessionManaging = SystemAudioSession(),
+        store: ChatStore? = nil
+    ) {
         self.synth = synth
         self.session = session
         self.store = store
@@ -95,7 +99,7 @@ final class SpeechReader {
     func autoReadIfEnabled(turn: LocalTurn, enabled: Bool) async {
         guard enabled, !turn.restoredFromHistory, turn.state == .complete,
               !turn.replySpokenOnce, let reply = turn.reply else { return }
-        guard speak(text: reply, turnId: turn.id) else { return }
+        guard let store, speak(text: reply, turnId: turn.id) else { return }
         try? await store.update(turn.id) { $0.replySpokenOnce = true }
     }
 

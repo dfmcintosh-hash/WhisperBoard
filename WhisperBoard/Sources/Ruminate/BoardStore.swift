@@ -1,7 +1,8 @@
 import Foundation
 
 enum BoardAskState: String, Codable, Equatable, Sendable {
-    case queued, sending, delivered, failed, failedAuth, ambiguous
+    case queued, sending, delivered, posted, wakeReceipted, answered, expired
+    case failed, failedAuth, ambiguous
 }
 
 struct OutgoingBoardAsk: Codable, Identifiable, Equatable, Sendable {
@@ -13,6 +14,11 @@ struct OutgoingBoardAsk: Codable, Identifiable, Equatable, Sendable {
     var ord: Int?
     var attempts: Int
     var errorMessage: String?
+    let voiceTurnID: String?
+    var wakeReceiptClaimID: String?
+    var wakeThroughOrd: Int?
+    var replyClaimID: String?
+    var replyText: String?
     let createdAt: Date
 }
 
@@ -41,11 +47,18 @@ actor BoardStore {
     }
 
     @discardableResult
-    func enqueue(text: String, clientTurnID: String = UUID().uuidString) throws -> OutgoingBoardAsk {
+    func enqueue(
+        text: String,
+        clientTurnID: String = UUID().uuidString,
+        voice: Bool = false
+    ) throws -> OutgoingBoardAsk {
         if let existing = snapshot.asks.first(where: { $0.id == clientTurnID }) { return existing }
         let ask = OutgoingBoardAsk(
             id: clientTurnID, boardID: boardID, text: text, state: .queued,
-            claimID: nil, ord: nil, attempts: 0, errorMessage: nil, createdAt: Date()
+            claimID: nil, ord: nil, attempts: 0, errorMessage: nil,
+            voiceTurnID: voice ? clientTurnID : nil,
+            wakeReceiptClaimID: nil, wakeThroughOrd: nil,
+            replyClaimID: nil, replyText: nil, createdAt: Date()
         )
         snapshot.asks.append(ask)
         try persist()
@@ -61,6 +74,31 @@ actor BoardStore {
             throw ChatStoreError.turnNotFound(id)
         }
         mutate(&snapshot.asks[index])
+        try persist()
+    }
+
+    func applyVoiceStatus(id: String, status: VoiceExchangeStatus) throws {
+        guard let index = snapshot.asks.firstIndex(where: { $0.id == id }) else {
+            throw ChatStoreError.turnNotFound(id)
+        }
+        guard snapshot.asks[index].voiceTurnID == status.voiceTurnID else {
+            throw RuminateError.conflict
+        }
+        switch status.state {
+        case .posted: snapshot.asks[index].state = .posted
+        case .wakeReceipted: snapshot.asks[index].state = .wakeReceipted
+        case .answered: snapshot.asks[index].state = .answered
+        case .expired: snapshot.asks[index].state = .expired
+        case .failed: snapshot.asks[index].state = .failed
+        }
+        if let claimID = status.askClaimID {
+            snapshot.asks[index].claimID = claimID
+        }
+        snapshot.asks[index].wakeReceiptClaimID = status.wakeReceiptClaimID
+        snapshot.asks[index].wakeThroughOrd = status.wakeThroughOrd
+        snapshot.asks[index].replyClaimID = status.replyClaimID
+        snapshot.asks[index].replyText = status.replyText
+        snapshot.asks[index].errorMessage = status.error
         try persist()
     }
 

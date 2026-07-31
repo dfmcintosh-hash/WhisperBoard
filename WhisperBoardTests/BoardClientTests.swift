@@ -12,7 +12,11 @@ final class BoardClientTests: XCTestCase {
             case ("GET", "/ruminate/boards"):
                 return (200, #"{"boards":[{"board_id":"wf_ruminate","title":"Ruminate","lane":"seat"},{"board_id":"wf_a","title":"A","lane":"board"}],"degraded":1}"#)
             case ("POST", "/ruminate/board/wf_a/ask"):
-                return (200, #"{"claim_id":"claim-1","ord":7,"status":"delivered"}"#)
+                let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+                XCTAssertEqual(body["voice"] as? Bool, true)
+                return (200, #"{"claim_id":"claim-1","ord":7,"status":"posted"}"#)
+            case ("GET", "/ruminate/board/wf_a/voice/client"):
+                return (200, #"{"state":"answered","voice_turn_id":"client","ask_claim_id":"claim-1","wake_receipt_claim_id":"wake-1","wake_through_ord":8,"reply_claim_id":"reply-1","reply_text":"answer"}"#)
             case ("GET", "/ruminate/board/wf_a/history"):
                 XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems,
                                [URLQueryItem(name: "limit", value: "25"), URLQueryItem(name: "mode", value: "full"), URLQueryItem(name: "cursor", value: "opaque")])
@@ -27,10 +31,15 @@ final class BoardClientTests: XCTestCase {
         XCTAssertEqual(boards.degraded, 1)
         XCTAssertEqual(boards.boards.last?.lane, .board)
         let id = try BoardID(validating: "wf_a")
-        let ask = try await client.postAsk(boardID: id, request: BoardAskRequest(text: "hello", clientTurnID: "client"))
-        XCTAssertEqual(ask.status, "delivered")
-        let encoded = try JSONEncoder().encode(BoardAskRequest(text: "hello", clientTurnID: "client"))
-        XCTAssertEqual(try JSONDecoder().decode(BoardAskRequest.self, from: encoded), BoardAskRequest(text: "hello", clientTurnID: "client"))
+        let request = BoardAskRequest(text: "hello", clientTurnID: "client", voice: true)
+        let ask = try await client.postAsk(boardID: id, request: request)
+        XCTAssertEqual(ask.status, "posted")
+        let encoded = try JSONEncoder().encode(request)
+        XCTAssertEqual(try JSONDecoder().decode(BoardAskRequest.self, from: encoded), request)
+        let voice = try await client.voiceStatus(boardID: id, clientTurnID: "client")
+        XCTAssertEqual(voice.state, .answered)
+        XCTAssertEqual(voice.wakeReceiptClaimID, "wake-1")
+        XCTAssertEqual(voice.replyText, "answer")
         let page = try await client.history(boardID: id, cursor: "opaque", limit: 25, mode: .full)
         XCTAssertEqual(page.rows.first?.claimID, "claim-1")
         XCTAssertEqual(requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")

@@ -77,12 +77,21 @@ private struct BoardThreadView: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     if model.mode == .conversation {
-                        ForEach(model.asks) { ask in
+                        ForEach(thread.asks) { ask in
                             BoardAskBubble(ask: ask, retry: { model.retry(ask) })
                         }
                         ForEach(thread.rows) { row in
                             if row.replyTo != nil {
-                                BoardReplyBubble(row: row)
+                                let voiceAnswer = thread.asks.first {
+                                    $0.voiceTurnID != nil
+                                        && $0.claimID == row.replyTo
+                                        && $0.state == .answered
+                                }
+                                BoardReplyBubble(
+                                    row: row,
+                                    canSpeak: voiceAnswer != nil,
+                                    speak: { model.speak(row) }
+                                )
                             }
                         }
                     } else {
@@ -118,7 +127,18 @@ private struct BoardAskBubble: View {
             HStack { Spacer(minLength: 52); Text(ask.text).padding(12).background(Color.accentColor).foregroundStyle(.white).clipShape(RoundedRectangle(cornerRadius: 16)) }
             switch ask.state {
             case .delivered:
-                Text(BoardDeliveryCopy.delivered).font(.caption).foregroundStyle(.secondary)
+                Text(BoardDeliveryCopy.posted).font(.caption).foregroundStyle(.secondary)
+            case .posted:
+                Text(BoardDeliveryCopy.posted).font(.caption).foregroundStyle(.secondary)
+            case .wakeReceipted:
+                Label("HELM wake receipted", systemImage: "bell.badge")
+                    .font(.caption).foregroundStyle(.secondary)
+            case .answered:
+                Label("Answered", systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.green)
+            case .expired:
+                Text("Expired — no HELM answer within five minutes")
+                    .font(.caption).foregroundStyle(.orange)
             case .queued:
                 Label("Queued", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
             case .sending:
@@ -134,8 +154,24 @@ private struct BoardAskBubble: View {
 
 private struct BoardReplyBubble: View {
     let row: BoardJournalRow
+    let canSpeak: Bool
+    let speak: () -> Void
     var body: some View {
-        HStack { Text(row.text).padding(12).background(Color(.secondarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 16)); Spacer(minLength: 52) }
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(row.text)
+                if canSpeak {
+                    Button(action: speak) {
+                        Label("Speak", systemImage: "speaker.wave.2.fill")
+                            .font(.caption)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            Spacer(minLength: 52)
+        }
     }
 }
 
@@ -167,6 +203,8 @@ final class BoardChatViewModel: ObservableObject {
     private let cacheKey = "ruminateBoardList"
     private let directory: URL
     private var stores: [BoardID: BoardStore] = [:]
+    private var draftIsVoice = false
+    private lazy var speechReader = SpeechReader()
 
     init() {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -228,8 +266,10 @@ final class BoardChatViewModel: ObservableObject {
         guard let board = selectedBoard, board.lane == .board, !text.isEmpty,
               let client = makeClient(), let store = try? store(for: board.boardID) else { return }
         draft = ""
+        let voice = draftIsVoice
+        draftIsVoice = false
         Task {
-            _ = try await store.enqueue(text: text)
+            _ = try await store.enqueue(text: text, voice: voice)
             asks = await store.asks()
             await BoardDeliveryActor(store: store, client: client).flush()
             asks = await store.asks()
@@ -253,8 +293,13 @@ final class BoardChatViewModel: ObservableObject {
             defer { isCapturing = false }
             if let result = try? await TranscriptionService.shared.recordAndTranscribe(owner: .chat) {
                 draft = result.text
+                draftIsVoice = true
             }
         }
+    }
+
+    func speak(_ row: BoardJournalRow) {
+        _ = speechReader.speak(text: row.text, turnId: row.claimID)
     }
 
     private func restoreSelection() {

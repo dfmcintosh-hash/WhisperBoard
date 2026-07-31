@@ -1,7 +1,7 @@
 import Foundation
 
 enum BoardDeliveryCopy {
-    static let delivered = "Delivered — ORCH responds when it surfaces"
+    static let posted = "Posted"
 }
 
 actor BoardDeliveryActor {
@@ -24,9 +24,13 @@ actor BoardDeliveryActor {
                 }
                 let response = try await client.postAsk(
                     boardID: ask.boardID,
-                    request: BoardAskRequest(text: ask.text, clientTurnID: ask.id)
+                    request: BoardAskRequest(
+                        text: ask.text,
+                        clientTurnID: ask.id,
+                        voice: ask.voiceTurnID != nil
+                    )
                 )
-                guard response.status == "delivered" else {
+                guard ["posted", "delivered"].contains(response.status) else {
                     try await store.updateAsk(id: ask.id) {
                         $0.state = .ambiguous
                         $0.errorMessage = "Bridge returned \(response.status)"
@@ -34,7 +38,7 @@ actor BoardDeliveryActor {
                     return
                 }
                 try await store.updateAsk(id: ask.id) {
-                    $0.state = .delivered
+                    $0.state = .posted
                     $0.claimID = response.claimID
                     $0.ord = response.ord
                 }

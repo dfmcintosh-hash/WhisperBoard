@@ -6,6 +6,7 @@ final class BoardThreadController: ObservableObject {
     typealias Sleep = @Sendable (TimeInterval) async -> Void
 
     @Published private(set) var rows: [BoardJournalRow] = []
+    @Published private(set) var asks: [OutgoingBoardAsk] = []
     @Published private(set) var isStale = false
 
     private var boardID: BoardID?
@@ -65,6 +66,10 @@ final class BoardThreadController: ObservableObject {
             try await store.merge(rows: page.rows)
             try await store.setCursor(page.nextCursor, mode: mode)
             rows = await store.rows()
+            await refreshVoiceStatuses(
+                boardID: boardID, store: store, client: client
+            )
+            asks = await store.asks()
             isStale = false
         } catch RuminateError.conflict {
             guard token == generation else { return }
@@ -73,7 +78,31 @@ final class BoardThreadController: ObservableObject {
         } catch {
             guard token == generation else { return }
             rows = await store.rows()
+            asks = await store.asks()
             isStale = true
+        }
+    }
+
+    private func refreshVoiceStatuses(
+        boardID: BoardID,
+        store: BoardStore,
+        client: BoardClientProtocol
+    ) async {
+        let storedAsks = await store.asks()
+        let voiceAsks = storedAsks.filter {
+            $0.voiceTurnID != nil && $0.state != .answered
+        }.suffix(3)
+        for ask in voiceAsks {
+            guard let voiceTurnID = ask.voiceTurnID else { continue }
+            do {
+                let status = try await client.voiceStatus(
+                    boardID: boardID, clientTurnID: voiceTurnID
+                )
+                try await store.applyVoiceStatus(id: ask.id, status: status)
+            } catch {
+                // Bridge-first rolling upgrades and transient polls leave the
+                // last durable state visible; history polling remains healthy.
+            }
         }
     }
 }

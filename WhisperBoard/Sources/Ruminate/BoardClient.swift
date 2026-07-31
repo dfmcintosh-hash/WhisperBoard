@@ -3,6 +3,7 @@ import Foundation
 protocol BoardClientProtocol: Sendable {
     func fetchBoards() async throws -> BoardsResponse
     func postAsk(boardID: BoardID, request: BoardAskRequest) async throws -> BoardAskResponse
+    func voiceStatus(boardID: BoardID, clientTurnID: String) async throws -> VoiceExchangeStatus
     func history(boardID: BoardID, cursor: String?, limit: Int, mode: BoardHistoryMode) async throws -> BoardHistoryPage
 }
 
@@ -29,6 +30,14 @@ final class BoardClient: BoardClientProtocol, @unchecked Sendable {
 
     func postAsk(boardID: BoardID, request: BoardAskRequest) async throws -> BoardAskResponse {
         try await send(url: boardEndpoint(boardID).appendingPathComponent("ask"), method: "POST", body: try encoder.encode(request))
+    }
+
+    func voiceStatus(boardID: BoardID, clientTurnID: String) async throws -> VoiceExchangeStatus {
+        try await send(
+            url: boardEndpoint(boardID)
+                .appendingPathComponent("voice")
+                .appendingPathComponent(clientTurnID)
+        )
     }
 
     func history(boardID: BoardID, cursor: String?, limit: Int, mode: BoardHistoryMode) async throws -> BoardHistoryPage {

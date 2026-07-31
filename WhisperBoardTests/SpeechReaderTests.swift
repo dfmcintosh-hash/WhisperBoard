@@ -56,6 +56,16 @@ final class SpeechReaderTests: XCTestCase {
         await reader.autoReadIfEnabled(turn: restored, enabled: true)
         XCTAssertEqual(synth.spoken, ["answer"])
     }
+
+    func testBoardReplyCanBeReadManuallyWithoutChatStore() {
+        let synth = FakeSpeechSynth()
+        let reader = SpeechReader(
+            synth: synth, session: FakeAudioSession(), store: nil
+        )
+        XCTAssertTrue(reader.speak(text: "board answer", turnId: "reply-1"))
+        XCTAssertEqual(synth.spoken, ["board answer"])
+        reader.stop()
+    }
 }
 
 private final class FakeSpeechSynth: SpeechSynth {

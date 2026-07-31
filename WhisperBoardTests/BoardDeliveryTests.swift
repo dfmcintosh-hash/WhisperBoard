@@ -2,17 +2,35 @@ import XCTest
 @testable import WhisperBoard
 
 final class BoardDeliveryTests: XCTestCase {
-    func testDeliveryIsTerminalAndUsesExactChip() async throws {
+    func testPostingUsesTruthfulChipAndPreservesLegacyResponse() async throws {
         let store = try makeStore("wf_a")
         let ask = try await store.enqueue(text: "hello", clientTurnID: "client")
         let client = FakeBoardClient(posts: [.success(BoardAskResponse(claimID: "claim", ord: 9, status: "delivered"))])
         await BoardDeliveryActor(store: store, client: client).flush()
         let saved = await store.ask(id: ask.id)
-        XCTAssertEqual(saved?.state, .delivered)
+        XCTAssertEqual(saved?.state, .posted)
         XCTAssertEqual(saved?.claimID, "claim")
-        XCTAssertEqual(BoardDeliveryCopy.delivered, "Delivered — ORCH responds when it surfaces")
+        XCTAssertEqual(BoardDeliveryCopy.posted, "Posted")
         let count = await client.postCount()
         XCTAssertEqual(count, 1)
+    }
+
+    func testVoiceAskSendsVoiceFlagAndAcceptsPostedResponse() async throws {
+        let store = try makeStore("wf_voice")
+        _ = try await store.enqueue(
+            text: "spoken", clientTurnID: "voice-1", voice: true
+        )
+        let client = FakeBoardClient(posts: [
+            .success(BoardAskResponse(claimID: "ask-1", ord: 4, status: "posted"))
+        ])
+
+        await BoardDeliveryActor(store: store, client: client).flush()
+
+        let requests = await client.postedRequests()
+        let request = requests.first
+        XCTAssertEqual(request?.voice, true)
+        let state = await store.ask(id: "voice-1")?.state
+        XCTAssertEqual(state, .posted)
     }
 
     func testTransportRequeuesWithoutLosingFIFO() async throws {
@@ -44,8 +62,8 @@ final class BoardDeliveryTests: XCTestCase {
         let aState = await reloadedA.ask(id: "a")?.state
         let bState = await b.ask(id: "b")?.state
         let posted = await client.postedTexts()
-        XCTAssertEqual(aState, .delivered)
-        XCTAssertEqual(bState, .delivered)
+        XCTAssertEqual(aState, .posted)
+        XCTAssertEqual(bState, .posted)
         XCTAssertEqual(Set(posted), Set(["A", "B"]))
     }
 
@@ -61,16 +79,22 @@ final class BoardDeliveryTests: XCTestCase {
 actor FakeBoardClient: BoardClientProtocol {
     private var posts: [Result<BoardAskResponse, RuminateError>]
     private var texts: [String] = []
+    private var requests: [BoardAskRequest] = []
 
     init(posts: [Result<BoardAskResponse, RuminateError>] = []) { self.posts = posts }
     func fetchBoards() async throws -> BoardsResponse { BoardsResponse(boards: [], degraded: 0) }
     func postAsk(boardID: BoardID, request: BoardAskRequest) async throws -> BoardAskResponse {
         texts.append(request.text)
+        requests.append(request)
         return try posts.removeFirst().get()
+    }
+    func voiceStatus(boardID: BoardID, clientTurnID: String) async throws -> VoiceExchangeStatus {
+        throw RuminateError.server(404)
     }
     func history(boardID: BoardID, cursor: String?, limit: Int, mode: BoardHistoryMode) async throws -> BoardHistoryPage {
         BoardHistoryPage(rows: [], nextCursor: nil, eof: true)
     }
     func postCount() -> Int { texts.count }
     func postedTexts() -> [String] { texts }
+    func postedRequests() -> [BoardAskRequest] { requests }
 }

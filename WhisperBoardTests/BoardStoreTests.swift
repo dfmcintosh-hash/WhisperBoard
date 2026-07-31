@@ -44,4 +44,33 @@ final class BoardStoreTests: XCTestCase {
         XCTAssertEqual(aAsks.count, 1)
         XCTAssertTrue(bAsks.isEmpty)
     }
+
+    func testVoiceIdentityAndProjectedStatePersist() async throws {
+        let id = try BoardID(validating: "wf_voice")
+        let directory = root()
+        let store = try BoardStore(boardID: id, directory: directory)
+        let ask = try await store.enqueue(
+            text: "spoken question", clientTurnID: "voice-1", voice: true
+        )
+        XCTAssertEqual(ask.voiceTurnID, "voice-1")
+        try await store.applyVoiceStatus(
+            id: ask.id,
+            status: VoiceExchangeStatus(
+                state: .wakeReceipted,
+                voiceTurnID: "voice-1",
+                askClaimID: "ask-1",
+                wakeReceiptClaimID: "wake-1",
+                wakeThroughOrd: 7,
+                replyClaimID: nil,
+                replyText: nil,
+                error: nil
+            )
+        )
+
+        let reloaded = try BoardStore(boardID: id, directory: directory)
+        let saved = await reloaded.ask(id: ask.id)
+        XCTAssertEqual(saved?.state, .wakeReceipted)
+        XCTAssertEqual(saved?.wakeReceiptClaimID, "wake-1")
+        XCTAssertEqual(saved?.wakeThroughOrd, 7)
+    }
 }
