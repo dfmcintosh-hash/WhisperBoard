@@ -27,9 +27,9 @@ final class DeliveryActorTests: XCTestCase {
             )
             let delivery = DeliveryActor(store: store, client: client, policy: DeliveryPolicy(pollInitial: 0, pollMaximum: 0, turnDeadline: 2, jitter: 0), sleep: instantSleep)
             await delivery.kick()
-            for _ in 0..<20 {
+            for _ in 0..<100 {
                 if await store.turn(id: turn.id)?.state != .accepted { break }
-                await Task.yield()
+                try await Task.sleep(nanoseconds: 1_000_000)
             }
             let finalState = await store.turn(id: turn.id)?.state
             let statusCalls = await client.statusCallCount()

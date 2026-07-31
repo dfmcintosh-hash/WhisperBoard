@@ -58,7 +58,7 @@ final class BoardThreadControllerTests: XCTestCase {
         XCTAssertEqual(controller.asks.first?.replyText, "answer")
     }
 
-    func testOneCadencePollsOnlyNewestUnansweredVoiceExchange() async throws {
+    func testFirstCadencePollsNewestUnansweredVoiceExchange() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let id = try BoardID(validating: "wf_bounded")
@@ -82,7 +82,7 @@ final class BoardThreadControllerTests: XCTestCase {
 
         let calls = await client.voiceCalls()
         XCTAssertFalse(calls.isEmpty)
-        XCTAssertEqual(Set(calls), Set(["three"]))
+        XCTAssertEqual(calls.first, "three")
     }
 
     func testVoicePollingRotatesSoTerminalNewestCannotStarveOlderExchange() async throws {

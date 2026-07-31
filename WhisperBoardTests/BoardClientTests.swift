@@ -12,7 +12,9 @@ final class BoardClientTests: XCTestCase {
             case ("GET", "/ruminate/boards"):
                 return (200, #"{"boards":[{"board_id":"wf_ruminate","title":"Ruminate","lane":"seat"},{"board_id":"wf_a","title":"A","lane":"board"}],"degraded":1}"#)
             case ("POST", "/ruminate/board/wf_a/ask"):
-                let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+                let body = try JSONSerialization.jsonObject(
+                    with: try requestBody(request)
+                ) as! [String: Any]
                 XCTAssertEqual(body["voice"] as? Bool, true)
                 return (200, #"{"claim_id":"claim-1","ord":7,"status":"posted"}"#)
             case ("GET", "/ruminate/board/wf_a/voice/client"):
@@ -43,6 +45,34 @@ final class BoardClientTests: XCTestCase {
         let page = try await client.history(boardID: id, cursor: "opaque", limit: 25, mode: .full)
         XCTAssertEqual(page.rows.first?.claimID, "claim-1")
         XCTAssertEqual(requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+    }
+}
+
+private enum BoardMockError: Error {
+    case missingRequestBody
+    case requestBodyReadFailed
+}
+
+private func requestBody(_ request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        throw BoardMockError.missingRequestBody
+    }
+    stream.open()
+    defer { stream.close() }
+    var body = Data()
+    var buffer = [UInt8](repeating: 0, count: 1_024)
+    while true {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count < 0 {
+            throw stream.streamError ?? BoardMockError.requestBodyReadFailed
+        }
+        if count == 0 {
+            return body
+        }
+        body.append(buffer, count: count)
     }
 }
 
