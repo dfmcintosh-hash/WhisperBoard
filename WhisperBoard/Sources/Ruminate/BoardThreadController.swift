@@ -15,6 +15,7 @@ final class BoardThreadController: ObservableObject {
     private var client: BoardClientProtocol?
     private var pollTask: Task<Void, Never>?
     private var generation = 0
+    private var lastVoicePollID: String?
     private let interval: TimeInterval
     private let sleep: Sleep
 
@@ -36,6 +37,7 @@ final class BoardThreadController: ObservableObject {
         self.mode = mode
         self.store = store
         self.client = client
+        lastVoicePollID = nil
         pollTask = Task { [weak self] in
             guard let self else { return }
             await self.fetch(generation: token)
@@ -96,18 +98,33 @@ final class BoardThreadController: ObservableObject {
         let storedAsks = await store.asks()
         let voiceAsks = storedAsks.filter {
             $0.voiceTurnID != nil && $0.state != .answered
-        }.suffix(1)
-        for ask in voiceAsks {
-            guard let voiceTurnID = ask.voiceTurnID else { continue }
-            do {
-                let status = try await client.voiceStatus(
-                    boardID: boardID, clientTurnID: voiceTurnID
-                )
-                try await store.applyVoiceStatus(id: ask.id, status: status)
-            } catch {
-                // Bridge-first rolling upgrades and transient polls leave the
-                // last durable state visible; history polling remains healthy.
-            }
+        }
+        guard !voiceAsks.isEmpty else {
+            lastVoicePollID = nil
+            return
+        }
+        let ask: OutgoingBoardAsk
+        if
+            let lastVoicePollID,
+            let lastIndex = voiceAsks.firstIndex(where: {
+                $0.id == lastVoicePollID
+            })
+        {
+            let nextIndex = lastIndex == 0 ? voiceAsks.count - 1 : lastIndex - 1
+            ask = voiceAsks[nextIndex]
+        } else {
+            ask = voiceAsks[voiceAsks.count - 1]
+        }
+        lastVoicePollID = ask.id
+        guard let voiceTurnID = ask.voiceTurnID else { return }
+        do {
+            let status = try await client.voiceStatus(
+                boardID: boardID, clientTurnID: voiceTurnID
+            )
+            try await store.applyVoiceStatus(id: ask.id, status: status)
+        } catch {
+            // Bridge-first rolling upgrades and transient polls leave the
+            // last durable state visible; history polling remains healthy.
         }
     }
 }

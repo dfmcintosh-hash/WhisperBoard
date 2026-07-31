@@ -84,6 +84,36 @@ final class BoardThreadControllerTests: XCTestCase {
         XCTAssertFalse(calls.isEmpty)
         XCTAssertEqual(Set(calls), Set(["three"]))
     }
+
+    func testVoicePollingRotatesSoTerminalNewestCannotStarveOlderExchange() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let id = try BoardID(validating: "wf_fair")
+        let store = try BoardStore(boardID: id, directory: directory)
+        for turn in ["one", "two", "three"] {
+            _ = try await store.enqueue(
+                text: turn, clientTurnID: turn, voice: true
+            )
+            try await store.updateAsk(id: turn) {
+                $0.state = turn == "three" ? .expired : .posted
+            }
+        }
+        let client = PollBoardClient(
+            page: BoardHistoryPage(rows: [], nextCursor: nil, eof: true)
+        )
+        let controller = BoardThreadController(interval: 60)
+        controller.start(
+            boardID: id, mode: .conversation, store: store, client: client
+        )
+
+        for _ in 0..<5 {
+            await controller.refreshNow()
+        }
+        controller.stop()
+
+        let calls = await client.voiceCalls()
+        XCTAssertTrue(Set(["one", "two", "three"]).isSubset(of: Set(calls)))
+    }
 }
 
 private actor PollBoardClient: BoardClientProtocol {
