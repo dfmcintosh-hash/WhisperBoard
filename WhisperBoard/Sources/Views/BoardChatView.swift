@@ -203,7 +203,7 @@ final class BoardChatViewModel: ObservableObject {
     private let cacheKey = "ruminateBoardList"
     private let directory: URL
     private var stores: [BoardID: BoardStore] = [:]
-    private var draftIsVoice = false
+    private var voiceDraftText: String?
     private lazy var speechReader = SpeechReader()
 
     init() {
@@ -266,14 +266,14 @@ final class BoardChatViewModel: ObservableObject {
         guard let board = selectedBoard, board.lane == .board, !text.isEmpty,
               let client = makeClient(), let store = try? store(for: board.boardID) else { return }
         draft = ""
-        let voice = draftIsVoice
-        draftIsVoice = false
+        let voice = voiceDraftText == text
+        voiceDraftText = nil
         Task {
             _ = try await store.enqueue(text: text, voice: voice)
             asks = await store.asks()
             await BoardDeliveryActor(store: store, client: client).flush()
             asks = await store.asks()
-            await thread.refreshNow()
+            await thread.refreshLocalAsks()
         }
     }
 
@@ -283,6 +283,7 @@ final class BoardChatViewModel: ObservableObject {
             try? await store.updateAsk(id: ask.id) { $0.state = .queued; $0.errorMessage = nil }
             await BoardDeliveryActor(store: store, client: client).flush()
             asks = await store.asks()
+            await thread.refreshLocalAsks()
         }
     }
 
@@ -293,7 +294,9 @@ final class BoardChatViewModel: ObservableObject {
             defer { isCapturing = false }
             if let result = try? await TranscriptionService.shared.recordAndTranscribe(owner: .chat) {
                 draft = result.text
-                draftIsVoice = true
+                voiceDraftText = result.text.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
             }
         }
     }

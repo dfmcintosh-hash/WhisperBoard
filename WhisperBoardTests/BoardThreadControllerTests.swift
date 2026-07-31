@@ -57,6 +57,33 @@ final class BoardThreadControllerTests: XCTestCase {
         XCTAssertEqual(controller.asks.first?.state, .answered)
         XCTAssertEqual(controller.asks.first?.replyText, "answer")
     }
+
+    func testOneCadencePollsOnlyNewestUnansweredVoiceExchange() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let id = try BoardID(validating: "wf_bounded")
+        let store = try BoardStore(boardID: id, directory: directory)
+        for turn in ["one", "two", "three"] {
+            _ = try await store.enqueue(
+                text: turn, clientTurnID: turn, voice: true
+            )
+            try await store.updateAsk(id: turn) { $0.state = .posted }
+        }
+        let client = PollBoardClient(
+            page: BoardHistoryPage(rows: [], nextCursor: nil, eof: true)
+        )
+        let controller = BoardThreadController(interval: 60)
+        controller.start(
+            boardID: id, mode: .conversation, store: store, client: client
+        )
+
+        await controller.refreshNow()
+        controller.stop()
+
+        let calls = await client.voiceCalls()
+        XCTAssertFalse(calls.isEmpty)
+        XCTAssertEqual(Set(calls), Set(["three"]))
+    }
 }
 
 private actor PollBoardClient: BoardClientProtocol {
@@ -64,6 +91,7 @@ private actor PollBoardClient: BoardClientProtocol {
     let page: BoardHistoryPage
     let voice: VoiceExchangeStatus?
     var call: Call?
+    var voiceIDs: [String] = []
     init(page: BoardHistoryPage, voice: VoiceExchangeStatus? = nil) {
         self.page = page
         self.voice = voice
@@ -71,6 +99,7 @@ private actor PollBoardClient: BoardClientProtocol {
     func fetchBoards() async throws -> BoardsResponse { BoardsResponse(boards: [], degraded: 0) }
     func postAsk(boardID: BoardID, request: BoardAskRequest) async throws -> BoardAskResponse { fatalError() }
     func voiceStatus(boardID: BoardID, clientTurnID: String) async throws -> VoiceExchangeStatus {
+        voiceIDs.append(clientTurnID)
         guard let voice else { throw RuminateError.server(404) }
         return voice
     }
@@ -79,4 +108,5 @@ private actor PollBoardClient: BoardClientProtocol {
         return page
     }
     func lastCall() -> Call? { call }
+    func voiceCalls() -> [String] { voiceIDs }
 }

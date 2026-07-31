@@ -33,6 +33,39 @@ final class BoardDeliveryTests: XCTestCase {
         XCTAssertEqual(state, .posted)
     }
 
+    func testVoiceAskRejectsLegacyDeliveredResponseDuringAppFirstRollout() async throws {
+        let store = try makeStore("wf_voice")
+        _ = try await store.enqueue(
+            text: "spoken", clientTurnID: "voice-legacy", voice: true
+        )
+        let client = FakeBoardClient(posts: [
+            .success(
+                BoardAskResponse(
+                    claimID: "ordinary-ask", ord: 5, status: "delivered"
+                )
+            )
+        ])
+
+        await BoardDeliveryActor(store: store, client: client).flush()
+
+        let saved = await store.ask(id: "voice-legacy")
+        XCTAssertEqual(saved?.state, .ambiguous)
+        XCTAssertNil(saved?.claimID)
+    }
+
+    func testBusyResponseRequeuesInsteadOfFailing() async throws {
+        let store = try makeStore("wf_busy")
+        _ = try await store.enqueue(text: "question", clientTurnID: "busy")
+        let client = FakeBoardClient(posts: [
+            .failure(.busy(retryAfter: 5))
+        ])
+
+        await BoardDeliveryActor(store: store, client: client).flush()
+
+        let saved = await store.ask(id: "busy")
+        XCTAssertEqual(saved?.state, .queued)
+    }
+
     func testTransportRequeuesWithoutLosingFIFO() async throws {
         let store = try makeStore("wf_a")
         _ = try await store.enqueue(text: "one", clientTurnID: "one")

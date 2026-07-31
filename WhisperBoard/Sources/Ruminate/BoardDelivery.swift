@@ -30,7 +30,12 @@ actor BoardDeliveryActor {
                         voice: ask.voiceTurnID != nil
                     )
                 )
-                guard ["posted", "delivered"].contains(response.status) else {
+                let accepted = (
+                    ask.voiceTurnID != nil
+                    ? response.status == "posted"
+                    : ["posted", "delivered"].contains(response.status)
+                )
+                guard accepted else {
                     try await store.updateAsk(id: ask.id) {
                         $0.state = .ambiguous
                         $0.errorMessage = "Bridge returned \(response.status)"
@@ -44,6 +49,12 @@ actor BoardDeliveryActor {
                 }
             } catch RuminateError.transport {
                 try? await store.updateAsk(id: ask.id) { $0.state = .queued }
+                return
+            } catch RuminateError.busy(_) {
+                try? await store.updateAsk(id: ask.id) {
+                    $0.state = .queued
+                    $0.errorMessage = "Bridge busy — retry queued"
+                }
                 return
             } catch RuminateError.unauthorized {
                 try? await store.updateAsk(id: ask.id) {

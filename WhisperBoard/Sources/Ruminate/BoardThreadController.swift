@@ -51,6 +51,11 @@ final class BoardThreadController: ObservableObject {
         await fetch(generation: generation)
     }
 
+    func refreshLocalAsks() async {
+        guard let store else { return }
+        asks = await store.asks()
+    }
+
     func stop() {
         pollTask?.cancel()
         pollTask = nil
@@ -91,7 +96,7 @@ final class BoardThreadController: ObservableObject {
         let storedAsks = await store.asks()
         let voiceAsks = storedAsks.filter {
             $0.voiceTurnID != nil && $0.state != .answered
-        }.suffix(3)
+        }.suffix(1)
         for ask in voiceAsks {
             guard let voiceTurnID = ask.voiceTurnID else { continue }
             do {
