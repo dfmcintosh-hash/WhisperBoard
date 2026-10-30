@@ -1,8 +1,10 @@
 import SwiftUI
 
 /// The Call Test tab: run the probe by hand and read back what happened.
+/// `@StateObject` keeps the call stack, CallKit included, unbuilt until this tab is opened,
+/// so a launch that only dictates never touches it.
 struct ProbeView: View {
-    @ObservedObject private var call = ProbeCallController.shared
+    @StateObject private var call = ProbeCallController.shared
     @State private var setupText = "Not set up yet"
 
     var body: some View {

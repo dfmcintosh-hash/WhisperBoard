@@ -71,16 +71,16 @@ jobs:
         run: xcodegen generate
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project WhisperBoard.xcodeproj -scheme WhisperBoard
-      - name: Repeat the delivery test 20 times
+      - name: Repeat the delivery test 40 times
         run: |
           UDID=$(xcrun simctl list devices available | grep -E 'iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
           xcodebuild test -project WhisperBoard.xcodeproj -scheme WhisperBoard -destination "id=$UDID" \
             -only-testing:WhisperBoardTests/DeliveryActorTests/testWorkingPollsOnceToTerminalStates \
-            -test-iterations 20 \
+            -test-iterations 40 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > "$RUNNER_TEMP/repeat.log" 2>&1 || true
           echo "passed: $(grep -c "testWorkingPollsOnceToTerminalStates\]' passed" "$RUNNER_TEMP/repeat.log")"
           echo "failed: $(grep -c "testWorkingPollsOnceToTerminalStates\]' failed" "$RUNNER_TEMP/repeat.log")"
-          grep -E "testWorkingPollsOnceToTerminalStates\]' (passed|failed)" "$RUNNER_TEMP/repeat.log" | sed 's/.*\] //' | cut -c1-40
+          grep -E "testWorkingPollsOnceToTerminalStates\]' (passed|failed)" "$RUNNER_TEMP/repeat.log" | sed -E "s/.*' (passed|failed) \(([0-9.]+) seconds\).*/\1 \2/" | tr '\n' ';'
 
   sign:
     needs: build-and-test
