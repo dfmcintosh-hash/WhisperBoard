@@ -45,13 +45,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | grep -E 'error:|warning: unre|BUILD (SUCCEEDED|FAILED)|\*\*' | tail -80
       - name: Run tests (iOS Simulator, signing off)
         run: |
-          set -o pipefail
           UDID=$(xcrun simctl list devices available | grep -E 'iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
           xcodebuild test \
             -project WhisperBoard.xcodeproj \
             -scheme WhisperBoard \
             -destination "id=$UDID" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | grep -E 'error:|failed|passed|Executed|\*\*' | tail -60
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > "$RUNNER_TEMP/test.log" 2>&1 || STATUS=$?
+          grep -E '^/.*: error:|Test Case .* failed|Failing tests|\*\* TEST' "$RUNNER_TEMP/test.log" | cut -c1-300 || true
+          grep -E 'Test Case .CallProbeLogicTests' "$RUNNER_TEMP/test.log" | cut -c1-160 || true
+          tail -5 "$RUNNER_TEMP/test.log" | cut -c1-200
+          exit "${STATUS:-0}"
 
   sign:
     needs: build-and-test

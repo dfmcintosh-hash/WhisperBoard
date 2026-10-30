@@ -252,9 +252,11 @@ final class ProbeCallController: ObservableObject {
             framesSent = frames
             linkText = "Link alive"
         case .dead(let gap):
+            linkText = "LINK DEAD"
+            // Each failed reconnect reports dead again; only the first one goes in the log.
+            guard linkAlive else { return }
             linkAlive = false
             audio.play(.dead)
-            linkText = "LINK DEAD"
             record(String(format: "LINK DEAD: nothing heard for %.1f s", gap))
         case .reconnecting(let attempt):
             linkAlive = false
@@ -265,7 +267,9 @@ final class ProbeCallController: ObservableObject {
     }
 
     private func restartAudio() {
-        guard phase == .connected else { return }
+        // A real change stops the engine; a running engine means there's nothing to do,
+        // and restarting anyway could feed on its own change notifications.
+        guard phase == .connected, !audio.isRunning else { return }
         do {
             try audio.start()
             audio.play(linkAlive ? .alive : .dead)

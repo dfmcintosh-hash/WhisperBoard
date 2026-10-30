@@ -63,7 +63,11 @@ final class ProbeLink {
     /// Metadata for the server log. Never free text and never speech.
     func report(_ fields: [String: String]) {
         queue.async { [self] in
-            guard monitor.state == .alive else { return }
+            guard monitor.state == .alive else {
+                // Not up yet: goes out with the next hello instead of being lost.
+                hello.merge(fields) { _, new in new }
+                return
+            }
             sendJSON(fields.merging(["t": "event"]) { current, _ in current })
         }
     }
