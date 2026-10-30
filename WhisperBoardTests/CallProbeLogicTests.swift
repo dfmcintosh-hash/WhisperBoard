@@ -49,6 +49,22 @@ final class CallProbeLogicTests: XCTestCase {
         XCTAssertTrue(monitor.tick(now: 103.5))
     }
 
+    func testASocketErrorChangesTheToneAndALaterDeadEventDoesNotRepeatIt() {
+        var tone = LinkTone()
+        XCTAssertTrue(tone.up())
+        XCTAssertTrue(tone.down(), "a socket error must change the tone")
+        XCTAssertFalse(tone.down(), "the dead event after it must not change it again")
+        XCTAssertFalse(tone.isAlive)
+    }
+
+    func testTheToneReturnsOnceWhenTheLinkComesBack() {
+        var tone = LinkTone()
+        XCTAssertTrue(tone.up())
+        XCTAssertFalse(tone.up())
+        XCTAssertTrue(tone.down())
+        XCTAssertTrue(tone.up())
+    }
+
     func testBackoffCapsAtFourSecondsAndResets() {
         var backoff = ReconnectBackoff()
         XCTAssertEqual((0..<5).map { _ in backoff.nextDelay() }, [0.5, 1, 2, 4, 4])

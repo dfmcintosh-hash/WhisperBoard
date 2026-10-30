@@ -44,7 +44,7 @@ final class ProbeCallController: ObservableObject {
     private var watchdog: Task<Void, Never>?
     private var activity: Activity<ProbeCallAttributes>?
     private var routeObserver: NSObjectProtocol?
-    private var linkAlive = false
+    private var linkTone = LinkTone()
 
     private init() {
         bridge.owner = self
@@ -149,7 +149,7 @@ final class ProbeCallController: ObservableObject {
         callUUID = nil
         fulfilledAt = nil
         isMuted = false
-        linkAlive = false
+        linkTone = LinkTone()
         linkText = "No link"
         phase = .ended(message)
         record(message)
@@ -199,7 +199,7 @@ final class ProbeCallController: ObservableObject {
         } catch {
             record("Audio engine failed: \(error)")
         }
-        audio.play(linkAlive ? .alive : .dead)
+        audio.play(linkTone.isAlive ? .alive : .dead)
         noteRoute(reason: "activated")
         observeRoute()
         if let uuid = callUUID { provider.reportOutgoingCall(with: uuid, connectedAt: nil) }
@@ -243,8 +243,7 @@ final class ProbeCallController: ObservableObject {
     private func handle(_ event: ProbeLink.Event) {
         switch event {
         case .alive(let rtt, let frames):
-            if !linkAlive {
-                linkAlive = true
+            if linkTone.up() {
                 audio.play(.alive)
                 record("Link up")
             }
@@ -254,13 +253,16 @@ final class ProbeCallController: ObservableObject {
         case .dead(let gap):
             linkText = "LINK DEAD"
             // Each failed reconnect reports dead again; only the first one goes in the log.
-            guard linkAlive else { return }
-            linkAlive = false
-            audio.play(.dead)
-            record(String(format: "LINK DEAD: nothing heard for %.1f s", gap))
+            if linkTone.down() {
+                audio.play(.dead)
+                record(String(format: "LINK DEAD: nothing heard for %.1f s", gap))
+            }
         case .reconnecting(let attempt):
-            linkAlive = false
             linkText = "Reconnecting (\(attempt))"
+            if linkTone.down() {
+                audio.play(.dead)
+                record("LINK DEAD: the connection dropped")
+            }
         case .serverRefused(let why):
             record("Server refused: \(why)")
         }
@@ -272,7 +274,7 @@ final class ProbeCallController: ObservableObject {
         guard phase == .connected, !audio.isRunning else { return }
         do {
             try audio.start()
-            audio.play(linkAlive ? .alive : .dead)
+            audio.play(linkTone.isAlive ? .alive : .dead)
             audio.setMuted(isMuted)
         } catch {
             record("Audio restart failed: \(error)")

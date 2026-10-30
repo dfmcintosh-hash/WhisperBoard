@@ -95,6 +95,24 @@ struct LinkMonitor: Equatable {
     }
 }
 
+/// Which tone he should be hearing. Every way the link can go down leads through `down()`,
+/// a missed heartbeat and a socket error alike, so the good-line beep can't outlive the line.
+struct LinkTone: Equatable {
+    private(set) var isAlive = false
+
+    /// True when the tone has to change to the good-line beep.
+    mutating func up() -> Bool {
+        defer { isAlive = true }
+        return !isAlive
+    }
+
+    /// True when the tone has to change to the dead-line beep.
+    mutating func down() -> Bool {
+        defer { isAlive = false }
+        return isAlive
+    }
+}
+
 /// 0.5, 1, 2, then 4 s for as long as it takes.
 struct ReconnectBackoff: Equatable {
     private(set) var attempt = 0
