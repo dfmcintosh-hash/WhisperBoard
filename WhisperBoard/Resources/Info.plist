@@ -25,7 +25,38 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>WhisperBoard needs access to your microphone to convert your voice into text. Your audio is processed entirely on-device and never leaves your phone.</string>
+    <string>WhisperBoard uses your microphone for dictation, which stays on your phone, and for call mode, which sends your voice over your private Tailscale network to your own server.</string>
+    <key>NSSiriUsageDescription</key>
+    <string>Siri starts your test call to Number One.</string>
+    <key>NSUserActivityTypes</key>
+    <array>
+        <string>INStartCallIntent</string>
+    </array>
+    <key>INAlternativeAppNames</key>
+    <array>
+        <dict>
+            <key>INAlternativeAppName</key>
+            <string>Ruminate</string>
+        </dict>
+    </array>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>voip</string>
+    </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>100.64.0.0/10</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>

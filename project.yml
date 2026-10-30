@@ -22,6 +22,7 @@ targets:
       - path: WhisperBoard/Sources/Views
       - path: WhisperBoard/Sources/Shared
       - path: WhisperBoard/Sources/Ruminate
+      - path: WhisperBoard/Sources/CallProbe
       - path: WhisperBoard/Sources/WhisperKit
       - path: WhisperBoard/Resources
         excludes:
@@ -32,6 +33,8 @@ targets:
       INFOPLIST_FILE: WhisperBoard/Resources/Info.plist
     dependencies:
       - target: WhisperBoardKeyboard
+      - target: WhisperBoardIntents
+      - target: WhisperBoardCallActivity
       - package: WhisperKit
     scheme:
       testTargets:
@@ -60,6 +63,37 @@ targets:
       CODE_SIGN_ENTITLEMENTS: WhisperBoard/KeyboardExtension/Resources/KeyboardExtension.entitlements
       INFOPLIST_FILE: WhisperBoard/KeyboardExtension/Resources/KeyboardInfo.plist
     # No package dependencies – pure UIKit + AVFoundation + system frameworks only
+
+  # ─── Siri (voice proxy Phase 0) ──────────────────────
+  # Passes INStartCallIntent to the app. INAlternativeAppNames also needs this
+  # extension: Siri honours the "Ruminate" alias only with one present.
+  WhisperBoardIntents:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: WhisperBoard/Sources/IntentsExtension
+      - path: WhisperBoard/IntentsExtension/Resources
+        excludes:
+          - "IntentsInfo.plist"
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.captainsos.whisperboard.intents
+      INFOPLIST_FILE: WhisperBoard/IntentsExtension/Resources/IntentsInfo.plist
+
+  # ─── Test call Live Activity (voice proxy Phase 0) ───
+  WhisperBoardCallActivity:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: WhisperBoard/Sources/CallActivity
+      - path: WhisperBoard/Sources/CallProbe/ProbeActivityAttributes.swift
+      - path: WhisperBoard/CallActivity/Resources
+        excludes:
+          - "CallActivityInfo.plist"
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.captainsos.whisperboard.callactivity
+      INFOPLIST_FILE: WhisperBoard/CallActivity/Resources/CallActivityInfo.plist
 
   # ─── Tests ────────────────────────────────────────────
   WhisperBoardTests:

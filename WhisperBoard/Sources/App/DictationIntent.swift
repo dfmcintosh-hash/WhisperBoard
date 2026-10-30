@@ -41,5 +41,14 @@ struct WhisperBoardShortcuts: AppShortcutsProvider {
             shortTitle: "Dictate",
             systemImageName: "mic.fill"
         )
+        AppShortcut(
+            intent: StartTestCallIntent(),
+            phrases: [
+                "Talk to Number One on \(.applicationName)",
+                "Call Number One on \(.applicationName)"
+            ],
+            shortTitle: "Call Number One",
+            systemImageName: "phone.fill"
+        )
     }
 }

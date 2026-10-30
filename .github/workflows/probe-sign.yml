@@ -1,0 +1,117 @@
+name: Voice probe (compile, test, sign; never uploads)
+
+# Voice proxy Phase 0 (ORDER-1667). This workflow must never reach TestFlight: it calls
+# `fastlane sign_only`, and the guard step below fails the run if that ever changes.
+# The repo is public, so its logs are public and no build product is uploaded.
+on:
+  push:
+    branches: [ feat/voice-call-probe-o1667 ]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse any upload path in this workflow or the sign_only lane
+        run: |
+          ruby -e '
+            lane = File.read("fastlane/Fastfile")[/lane :sign_only do.*?^  end/m] or abort "no sign_only lane"
+            signed = File.read("fastlane/Fastfile")[/private_lane :signed_ipa do.*?^  end/m] or abort "no signed_ipa lane"
+            bad = /upload_to_testflight|pilot|deliver|upload_to_app_store/
+            abort "sign_only reaches an upload" if lane =~ bad || signed =~ bad
+          '
+          grep -n 'fastlane ' .github/workflows/probe-sign.yml | grep -v 'fastlane sign_only' | grep -v '#' && exit 1 || true
+
+  build-and-test:
+    needs: guard
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Xcode version
+        run: xcodebuild -version && xcodebuild -showsdks | grep -i ios && swift --version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project WhisperBoard.xcodeproj -scheme WhisperBoard
+      - name: Build (iOS Simulator, signing off)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project WhisperBoard.xcodeproj \
+            -scheme WhisperBoard \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | grep -E 'error:|warning: unre|BUILD (SUCCEEDED|FAILED)|\*\*' | tail -80
+      - name: Run tests (iOS Simulator, signing off)
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available | grep -E 'iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          xcodebuild test \
+            -project WhisperBoard.xcodeproj \
+            -scheme WhisperBoard \
+            -destination "id=$UDID" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | grep -E 'error:|failed|passed|Executed|\*\*' | tail -60
+
+  sign:
+    needs: build-and-test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project WhisperBoard.xcodeproj -scheme WhisperBoard
+      - name: Decode distribution certificate (.p12)
+        env:
+          DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+        run: |
+          echo "$DIST_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          echo "DIST_CERT_P12_PATH=$RUNNER_TEMP/dist.p12" >> "$GITHUB_ENV"
+      - name: Build and sign (no upload)
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+        run: fastlane sign_only
+      - name: Prove what was signed
+        run: |
+          set -e
+          WORK="$RUNNER_TEMP/ipa"
+          mkdir -p "$WORK"
+          unzip -q build/WhisperBoard.ipa -d "$WORK"
+          APP="$WORK/Payload/WhisperBoard.app"
+          codesign --verify --deep --strict "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E 'Authority=Apple Distribution|Identifier=|TeamIdentifier='
+          ls "$APP/PlugIns"
+          for name in WhisperBoardIntents WhisperBoardCallActivity WhisperBoardKeyboard; do
+            test -d "$APP/PlugIns/$name.appex"
+            codesign -dvv "$APP/PlugIns/$name.appex" 2>&1 | grep -E 'Authority=Apple Distribution'
+          done
+          codesign -d --entitlements - --xml "$APP" | plutil -p - | grep -E 'siri|aps|application-groups'
+          /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :INAlternativeAppNames:0:INAlternativeAppName' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity:NSExceptionDomains' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$APP/Info.plist"
+          echo "SIGNED, NOT UPLOADED"
+      - name: Delete the signed build
+        if: always()
+        run: rm -rf build
+      - name: Upload signing logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: gym-logs
+          path: ~/Library/Logs/gym/
+          if-no-files-found: ignore

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct WhisperBoardApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
         // Start the transcription service so it's ready for keyboard requests
@@ -24,6 +25,9 @@ private struct RootView: View {
         MainTabView()
             .fullScreenCover(isPresented: $launcher.pendingDictation) {
                 DictationView()
+            }
+            .onContinueUserActivity(ProbeStartRouter.activityType) { activity in
+                ProbeStartRouter.route(activity)
             }
     }
 }
