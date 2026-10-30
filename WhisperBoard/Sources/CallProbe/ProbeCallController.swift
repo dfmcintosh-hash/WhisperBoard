@@ -384,7 +384,9 @@ final class ProbeProviderBridge: NSObject, CXProviderDelegate {
     }
 }
 
-/// Everything Siri needs once, run from the Prepare button.
+/// Everything Siri needs once, run from the Prepare button and never at launch: INVocabulary
+/// throws an uncatchable exception in a build without the Siri entitlement, and the vocabulary
+/// persists across launches anyway.
 enum ProbeSiriSetup {
     @MainActor
     static func prepare() async -> String {
