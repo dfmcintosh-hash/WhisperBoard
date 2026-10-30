@@ -199,6 +199,7 @@ final class ProbeCallController: ObservableObject {
         } catch {
             record("Audio engine failed: \(error)")
         }
+        audio.setMuted(isMuted) // a reactivated call gets a new engine, which starts unmuted
         audio.play(linkTone.isAlive ? .alive : .dead)
         noteRoute(reason: "activated")
         observeRoute()
